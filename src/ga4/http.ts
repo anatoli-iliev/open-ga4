@@ -28,6 +28,14 @@ export class Ga4HttpError extends Error {
     readonly status: number,
     readonly body: unknown,
     message: string,
+    /**
+     * Google's own clock, from the response `Date` header.
+     *
+     * A machine whose clock has drifted more than a minute signs JWT
+     * assertions Google rejects, and the only symptom is a bare
+     * `invalid_grant`. Carrying the server's time makes that diagnosable.
+     */
+    readonly serverDate?: Date,
   ) {
     super(message);
     this.name = "Ga4HttpError";
@@ -116,10 +124,24 @@ export async function guardedFetch(
   }
 
   if (!response.ok) {
-    throw new Ga4HttpError(response.status, parsed, redactText(messageFrom(parsed, response)));
+    throw new Ga4HttpError(
+      response.status,
+      parsed,
+      redactText(messageFrom(parsed, response)),
+      parseServerDate(response),
+    );
   }
 
   return parsed;
+}
+
+function parseServerDate(response: Response): Date | undefined {
+  const header = response.headers.get("date");
+  if (!header) {
+    return undefined;
+  }
+  const parsed = new Date(header);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 function messageFrom(body: unknown, response: Response): string {
