@@ -47,7 +47,7 @@ Requires OpenClaw `>=2026.5.17`. Then add a config entry:
         "enabled": true,
         "config": {
           "credentials": "~/.openclaw/credentials/ga4.json",
-          "propertyId": "315903729"
+          "propertyId": "123456789"
         }
       }
     }
@@ -113,7 +113,7 @@ Verified comparisons, each backed by a fetched artifact:
 | Project | Verified fact | Here instead |
 | --- | --- | --- |
 | [`byungkyu/google-analytics`](https://clawhub.ai/byungkyu/google-analytics) — the most-installed GA4 skill on ClawHub, ~11,189 installs | Proxies the user's Google OAuth token through `api.maton.ai`, and exposes the write-capable Admin API. | Your credentials stay on your machine and go only to Google. Three allowed hosts, `analytics.readonly` scope, no write path. |
-| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request — a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | Every preset carries an explicit sort. Nothing writes report data to disk. |
+| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request — a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this plugin cannot honour raises an error naming why, rather than being dropped — asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
 | [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | Shells out to Python, requiring `uv` and a virtualenv. | A TypeScript plugin. No host binaries, no `pip`, no shell tool. |
 
 ## Analytics data is untrusted input

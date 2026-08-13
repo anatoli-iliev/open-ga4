@@ -3,6 +3,7 @@ import type { OrderBy, RunReportRequest, RunReportResponse } from "../ga4/client
 import { quotaWarning } from "../ga4/client.js";
 import { parseDateRange, precedingRange, type Ga4DateRange } from "../ga4/dates.js";
 import { formatReport } from "../ga4/format.js";
+import { buildFilters, FILTER_OPERATORS, type FilterCondition } from "../ga4/filters.js";
 import { applyRenames, assertRealtimeFields, assertWithinLimits, LIMITS } from "../ga4/limits.js";
 import { findPreset, PRESETS, PRESET_IDS } from "../ga4/presets.js";
 import { assertDimensionsAllowed, thresholdProneDimensions } from "../privacy/policy.js";
@@ -381,9 +382,9 @@ export function queryTool(runtime: Ga4Runtime) {
       "Use this only when ga4_report has no preset for what is being asked. It needs exact GA4 " +
       "API names — run ga4_fields first to find them rather than guessing, because a wrong name " +
       "is a wasted call.\n\n" +
-      "At most 9 dimensions and 10 metrics. Some combinations are impossible because the fields " +
-      "are measured at different scopes; if Google rejects a pairing, ga4_fields shows what is " +
-      "compatible.",
+      "Supports filters combined with AND. At most 9 dimensions and 10 metrics. Some combinations " +
+      "are impossible because the fields are measured at different scopes; if Google rejects a " +
+      "pairing, ga4_fields shows what is compatible.",
     promptSnippet: "ga4_query — custom Google Analytics report with explicit dimensions and metrics.",
     parameters: Type.Object({
       metrics: Type.Array(Type.String(), {
@@ -401,6 +402,22 @@ export function queryTool(runtime: Ga4Runtime) {
       date_range: Type.Optional(Type.Union(DATE_RANGES.map((value) => Type.Literal(value)))),
       start_date: Type.Optional(Type.String({ description: "Custom range start, YYYY-MM-DD." })),
       end_date: Type.Optional(Type.String({ description: "Custom range end, YYYY-MM-DD." })),
+      filters: Type.Optional(
+        Type.Array(
+          Type.Object({
+            field: Type.String({ description: "Dimension or metric API name to filter on." }),
+            op: Type.Union(FILTER_OPERATORS.map((value) => Type.Literal(value))),
+            value: Type.String({
+              description: "Text to match, a comma-separated list for in_list, or a number.",
+            }),
+          }),
+          {
+            maxItems: 5,
+            description:
+              "Conditions combined with AND. Metrics accept only greater_than and less_than.",
+          },
+        ),
+      ),
       order_by: Type.Optional(
         Type.String({ description: "Metric or dimension name to sort by, highest first." }),
       ),
@@ -413,6 +430,7 @@ export function queryTool(runtime: Ga4Runtime) {
       date_range?: string;
       start_date?: string;
       end_date?: string;
+      filters?: FilterCondition[];
       order_by?: string;
       limit?: number;
     }, signal?: AbortSignal): Promise<ReportOutcome> {
@@ -438,6 +456,11 @@ export function queryTool(runtime: Ga4Runtime) {
         limit,
       });
 
+      const filters = buildFilters(params.filters ?? [], metricRename.names);
+      if (filters.descriptions.length > 0) {
+        notes.push(`Filtered to rows where ${filters.descriptions.join(" and ")}.`);
+      }
+
       const orderBys: OrderBy[] | undefined = params.order_by
         ? metricRename.names.includes(params.order_by)
           ? [{ desc: true, metric: { metricName: params.order_by } }]
@@ -453,6 +476,8 @@ export function queryTool(runtime: Ga4Runtime) {
           dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
           limit: String(limit),
           ...(orderBys ? { orderBys } : {}),
+          ...(filters.dimensionFilter ? { dimensionFilter: filters.dimensionFilter } : {}),
+          ...(filters.metricFilter ? { metricFilter: filters.metricFilter } : {}),
         },
         signal,
       );

@@ -260,3 +260,97 @@ describe("ga4_query", () => {
     ]);
   });
 });
+
+describe("ga4_query filters", () => {
+  it("builds a dimension filter and says what it narrowed to", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    const result = await queryTool(runtime).execute({
+      metrics: ["sessions"],
+      dimensions: ["pagePath"],
+      filters: [{ field: "pagePath", op: "contains", value: "/blog" }],
+    });
+
+    expect(calls[0]!.request.dimensionFilter).toEqual({
+      filter: {
+        fieldName: "pagePath",
+        stringFilter: { matchType: "CONTAINS", value: "/blog", caseSensitive: false },
+      },
+    });
+    expect(result.markdown).toMatch(/Filtered to rows where pagePath contains "\/blog"/);
+  });
+
+  it("routes a metric condition to metricFilter, not dimensionFilter", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await queryTool(runtime).execute({
+      metrics: ["sessions"],
+      filters: [{ field: "sessions", op: "greater_than", value: "100" }],
+    });
+    expect(calls[0]!.request.metricFilter).toEqual({
+      filter: {
+        fieldName: "sessions",
+        numericFilter: { operation: "GREATER_THAN", value: { doubleValue: 100 } },
+      },
+    });
+    expect(calls[0]!.request.dimensionFilter).toBeUndefined();
+  });
+
+  it("combines several conditions with AND", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await queryTool(runtime).execute({
+      metrics: ["sessions"],
+      dimensions: ["pagePath", "country"],
+      filters: [
+        { field: "pagePath", op: "begins_with", value: "/docs" },
+        { field: "country", op: "exact", value: "Germany" },
+      ],
+    });
+    expect(calls[0]!.request.dimensionFilter?.andGroup?.expressions).toHaveLength(2);
+  });
+
+  it("splits an in_list value on commas", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await queryTool(runtime).execute({
+      metrics: ["sessions"],
+      dimensions: ["country"],
+      filters: [{ field: "country", op: "in_list", value: "Germany, France ,Spain" }],
+    });
+    expect(calls[0]!.request.dimensionFilter?.filter?.inListFilter?.values).toEqual([
+      "Germany",
+      "France",
+      "Spain",
+    ]);
+  });
+
+  it("refuses a text operator on a metric instead of dropping the filter", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      queryTool(runtime).execute({
+        metrics: ["sessions"],
+        filters: [{ field: "sessions", op: "contains", value: "10" }],
+      }),
+    ).rejects.toThrow(/is a metric, so it can only be filtered with greater_than or less_than/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a non-numeric value for a numeric comparison", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    await expect(
+      queryTool(runtime).execute({
+        metrics: ["sessions"],
+        filters: [{ field: "sessions", op: "greater_than", value: "lots" }],
+      }),
+    ).rejects.toThrow(/needs a number/);
+  });
+
+  it("refuses an unparseable regular expression before spending a request", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      queryTool(runtime).execute({
+        metrics: ["sessions"],
+        dimensions: ["pagePath"],
+        filters: [{ field: "pagePath", op: "regex", value: "([unclosed" }],
+      }),
+    ).rejects.toThrow(/not a valid regular expression/);
+    expect(calls).toHaveLength(0);
+  });
+});
