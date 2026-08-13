@@ -199,10 +199,10 @@ for every property you want the agent to be able to read.
 1. Still in **Admin**, in the **Property** column, click **Property details** (older
    interfaces label this **Property Settings**).
 2. At the top right you will see **PROPERTY ID** and a number, 9 or 10 digits, such as
-   `315903729`. That is what you need.
+   `123456789`. That is what you need.
 
 The property ID is also in the URL of any Analytics report, as the part that looks like
-`p315903729`.
+`p123456789`.
 
 **It is not the `G-XXXXXXXXXX` measurement ID.** The measurement ID is the string in your
 website's tracking tag, it identifies a data stream rather than a property, and the
@@ -225,7 +225,7 @@ Open your OpenClaw config file — `~/.openclaw/openclaw.json`, unless you have 
         "enabled": true,
         "config": {
           "credentials": "~/.openclaw/credentials/ga4.json",
-          "propertyId": "315903729"
+          "propertyId": "123456789"
         }
       }
     }
@@ -280,14 +280,14 @@ ga4_diagnose" is enough. A healthy setup looks like this:
 
 - **PASS** Google credentials — loaded from plugin config (credentials), service account ga4-reader@openclaw-ga4-472913.iam.gserviceaccount.com
 - **PASS** Admin API and property access — 2 properties reachable
-- **PASS** Data API report — property 315903729 returned 12480 active users over the last 7 days
+- **PASS** Data API report — property 123456789 returned 12480 active users over the last 7 days
 - **PASS** Privacy settings — redaction on; user-identifying dimensions blocked; property allowlist not set
 
 **Properties this credential can read**
 
 | Property id | Name | Account |
 | --- | --- | --- |
-| `315903729` | Acme Marketing Site | Acme Inc |
+| `123456789` | Acme Marketing Site | Acme Inc |
 | `287441055` | Acme Docs | Acme Inc |
 ```
 
@@ -318,7 +318,7 @@ table with numbers in it.
 | --- | --- | --- |
 | `403` mentioning **`SERVICE_DISABLED`**, or the message "The Google Analytics Data API is not enabled in project *X*" | Step 2a was skipped, or was done while the project picker was pointing at a different project. | Open <https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com>, confirm the project picker shows the project named in the error, click **Enable**, wait a minute, retry. |
 | The same error but naming **`analyticsadmin.googleapis.com`**, or `ga4_diagnose` failing only on "Admin API and property access" | Step 2b was skipped. Enabling the Data API does not enable the Admin API — they are two separate switches. | Open <https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com> and click **Enable**. Reports work meanwhile; pass a numeric property ID directly. |
-| `403` **without** `SERVICE_DISABLED` — "cannot read property 315903729" | Step 5 was skipped, or was done on a different property, or the address pasted into Analytics does not match the key file's `client_email`. This is the most common failure by a wide margin. | In Analytics: **Admin → Property access management → + → Add users**, paste the `client_email` from your key file, untick the email notification, select **Viewer**, click **Add**. Then re-run `ga4_diagnose` and check the address it prints matches character for character. |
+| `403` **without** `SERVICE_DISABLED` — "cannot read property 123456789" | Step 5 was skipped, or was done on a different property, or the address pasted into Analytics does not match the key file's `client_email`. This is the most common failure by a wide margin. | In Analytics: **Admin → Property access management → + → Add users**, paste the `client_email` from your key file, untick the email notification, select **Viewer**, click **Add**. Then re-run `ga4_diagnose` and check the address it prints matches character for character. |
 | `403` on one property while others work | Access is granted per property. The others got step 5; this one did not. | Repeat step 5 on that property. Or grant at the account level if you genuinely want the agent to read everything under the account. |
 | `404` / `NOT_FOUND` — "Google Analytics has no property with id *N*" | The number is not a property that exists. Usually a typo, a digit dropped, or a number copied from a different Google product. | Run `ga4_diagnose` and use a property ID from the table it prints. Or re-read it from **Admin → Property details**. |
 | "*G-XXXXXXXXXX* is a measurement id, which identifies a data stream rather than a property" | You used the measurement ID from your website's tracking tag. It is the string most people have to hand, and the reporting API cannot use it. | Get the numeric property ID from **Admin → Property details**, top right, 9–10 digits. Put that in `propertyId`. |
@@ -350,9 +350,9 @@ gcloud auth application-default set-quota-project openclaw-ga4-472913
 What each part is doing:
 
 - **`--scopes` is required here.** Without it, `gcloud auth application-default login` grants
-  only the default cloud-platform scope, and GA4 rejects the resulting token. Naming
-  `analytics.readonly` explicitly is what makes the credential able to read Analytics — and
-  read is all it can do.
+  gcloud's default scope set, which covers Cloud Platform but not Analytics — and GA4
+  rejects the resulting token as insufficiently scoped. Naming `analytics.readonly`
+  explicitly is what makes the credential able to read Analytics, and read is all it can do.
 - **`cloud-platform` is in that list only so the second command works.**
   `set-quota-project` writes to the Cloud Resource Manager API and needs it. If you leave it
   out, the login still works, but gcloud prints a warning that it cannot set a quota project,
