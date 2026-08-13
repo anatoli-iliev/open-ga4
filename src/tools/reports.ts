@@ -51,6 +51,7 @@ function present(
   response: RunReportResponse,
   runtime: Ga4Runtime,
   params: {
+    tool: string;
     title: string;
     dateRangeLabel?: string;
     notes: string[];
@@ -81,6 +82,15 @@ function present(
     redaction: runtime.config.redaction,
     notes,
     maxRows: params.limit,
+  });
+
+  void runtime.audit.record({
+    tool: params.tool,
+    propertyId: params.propertyId,
+    dimensions: params.dimensions,
+    metrics: params.metrics,
+    ...(params.dateRangeLabel ? { dateRange: params.dateRangeLabel } : {}),
+    rows: formatted.rowsShown,
   });
 
   return {
@@ -211,6 +221,7 @@ export function reportTool(runtime: Ga4Runtime) {
       const response = await client.runReport(propertyId, request, signal);
 
       return present(response, runtime, {
+        tool: "ga4_report",
         title: preset.intent.replace(/\.$/, ""),
         dateRangeLabel: range.label,
         notes,
@@ -291,6 +302,7 @@ export function compareTool(runtime: Ga4Runtime) {
       ];
 
       return present(response, runtime, {
+        tool: "ga4_compare",
         title: `${preset.intent.replace(/\.$/, "")} — period comparison`,
         dateRangeLabel: `${current.label} vs ${previous.label}`,
         notes,
@@ -358,6 +370,7 @@ export function realtimeTool(runtime: Ga4Runtime) {
       );
 
       return present(response, runtime, {
+        tool: "ga4_realtime",
         title: preset.intent.replace(/\.$/, ""),
         dateRangeLabel: "last 30 minutes",
         notes: [
@@ -483,6 +496,7 @@ export function queryTool(runtime: Ga4Runtime) {
       );
 
       return present(response, runtime, {
+        tool: "ga4_query",
         title: "Custom report",
         dateRangeLabel: range.label,
         notes,

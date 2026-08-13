@@ -28,6 +28,7 @@ function stubRuntime(
 
   const runtime: Ga4Runtime = {
     config,
+    audit: { record: async () => {} },
     client: async () => client,
     principal: () => "reader@example.iam.gserviceaccount.com",
     probes: () => [],

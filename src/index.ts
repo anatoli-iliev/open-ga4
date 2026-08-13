@@ -103,7 +103,12 @@ const ga4Plugin: OpenClawPluginDefinition = definePluginEntry({
     const config = resolveConfig(api.pluginConfig as Ga4PluginConfig | undefined, (message) => {
       api.logger.warn(message);
     });
-    const runtime = createRuntime({ config });
+    const runtime = createRuntime({
+      config,
+      onWarning: (message) => {
+        api.logger.warn(message);
+      },
+    });
 
     for (const spec of buildToolSpecs(runtime)) {
       api.registerTool(toAgentTool(spec, runtime));

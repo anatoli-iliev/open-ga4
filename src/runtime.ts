@@ -3,6 +3,7 @@ import { createTokenProvider } from "./auth/token.js";
 import { createGa4Client, type FieldMetadata, type Ga4Client, type MetadataResponse } from "./ga4/client.js";
 import { Ga4Error } from "./ga4/errors.js";
 import type { FetchLike } from "./ga4/http.js";
+import { createAuditLogger, NULL_AUDIT_LOGGER, type AuditLogger } from "./privacy/audit.js";
 import { assertPropertyAllowed, normalizePropertyId } from "./privacy/policy.js";
 import type { ResolvedConfig } from "./config.js";
 
@@ -16,6 +17,8 @@ import type { ResolvedConfig } from "./config.js";
 
 export type Ga4Runtime = {
   config: ResolvedConfig;
+  /** Opt-in local record of what was asked. Never records what came back. */
+  audit: AuditLogger;
   client(): Promise<Ga4Client>;
   /** The service-account address, for "grant access to X" messages. */
   principal(): string | undefined;
@@ -30,6 +33,7 @@ export type RuntimeOptions = {
   config: ResolvedConfig;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: FetchLike;
+  onWarning?: (message: string) => void;
 };
 
 export function createRuntime(options: RuntimeOptions): Ga4Runtime {
@@ -39,6 +43,9 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
   let principalAddress: string | undefined;
   let lastProbes: CredentialProbe[] = [];
   const metadataCache = new Map<string, Promise<MetadataResponse>>();
+  const audit = config.auditLogPath
+    ? createAuditLogger({ path: config.auditLogPath, onError: options.onWarning })
+    : NULL_AUDIT_LOGGER;
 
   async function build(): Promise<Ga4Client> {
     const resolution = await resolveCredentials({
@@ -73,6 +80,7 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
 
   return {
     config,
+    audit,
 
     client(): Promise<Ga4Client> {
       // Retry on the next call if construction failed, rather than caching a
