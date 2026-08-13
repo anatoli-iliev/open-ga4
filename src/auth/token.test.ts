@@ -35,7 +35,7 @@ function formOf(call: [string, RequestInit | undefined]): URLSearchParams {
 
 describe("createTokenProvider — service account", () => {
   it("exchanges a JWT bearer assertion for an access token", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse());
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 });
 
     expect(await provider.getAccessToken()).toBe("ya29.token");
@@ -48,7 +48,7 @@ describe("createTokenProvider — service account", () => {
   });
 
   it("form-encodes the request, because the token endpoint rejects JSON", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse());
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     await createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 }).getAccessToken();
     const init = fetchImpl.mock.calls[0]![1] as RequestInit;
     expect((init.headers as Record<string, string>)["content-type"]).toBe(
@@ -57,7 +57,7 @@ describe("createTokenProvider — service account", () => {
   });
 
   it("never sends the private key to Google", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse());
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     await createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 }).getAccessToken();
     expect(String(fetchImpl.mock.calls[0]![1]!.body)).not.toContain("PRIVATE");
   });
@@ -65,7 +65,7 @@ describe("createTokenProvider — service account", () => {
 
 describe("createTokenProvider — gcloud authorized user", () => {
   it("uses the refresh-token grant", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse());
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     const provider = createTokenProvider(AUTHORIZED_USER, { fetchImpl, now: () => 1000 });
 
     expect(await provider.getAccessToken()).toBe("ya29.token");
@@ -79,7 +79,7 @@ describe("createTokenProvider — gcloud authorized user", () => {
 
 describe("caching", () => {
   it("reuses a live token instead of re-authenticating", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse());
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 });
 
     await provider.getAccessToken();
@@ -90,7 +90,7 @@ describe("caching", () => {
   });
 
   it("renews a minute before expiry rather than at it", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse("ya29.token", 3600));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse("ya29.token", 3600));
     // Issued at t=1000 with a 3600s lifetime, so the token really expires at
     // t=4600 and the 60s skew window opens at t=4540.
     let clock = 1000;
@@ -109,7 +109,7 @@ describe("caching", () => {
   });
 
   it("keeps using the cached token comfortably before the skew window", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse("ya29.token", 3600));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse("ya29.token", 3600));
     let clock = 1000;
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => clock });
 
@@ -120,7 +120,7 @@ describe("caching", () => {
   });
 
   it("re-authenticates after invalidate()", async () => {
-    const fetchImpl = vi.fn(async () => tokenResponse());
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 });
 
     await provider.getAccessToken();
@@ -131,7 +131,7 @@ describe("caching", () => {
   });
 
   it("collapses concurrent callers into a single exchange", async () => {
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       return tokenResponse();
     });
@@ -164,13 +164,13 @@ type FetchLikeSignature = (input: string, init?: RequestInit) => Promise<Respons
 
 describe("malformed responses", () => {
   it("reports a missing access token plainly", async () => {
-    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => new Response("{}", { status: 200 }));
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 });
     await expect(provider.getAccessToken()).rejects.toThrow(/no access token/i);
   });
 
   it("defaults to a one-hour lifetime when Google omits expires_in", async () => {
-    const fetchImpl = vi.fn(async () => new Response('{"access_token":"t"}', { status: 200 }));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{"access_token":"t"}', { status: 200 }));
     let clock = 1000;
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => clock });
 
