@@ -40,6 +40,8 @@ export type GuardedFetchOptions = {
   method?: "GET" | "POST";
   accessToken?: string;
   body?: unknown;
+  /** Form-encoded body. Google's token endpoint does not accept JSON. */
+  form?: Record<string, string>;
   signal?: AbortSignal;
   /** Extra headers. Never used for credentials — those go through accessToken. */
   headers?: Record<string, string>;
@@ -89,14 +91,19 @@ export async function guardedFetch(
   if (options.accessToken) {
     headers.authorization = `Bearer ${options.accessToken}`;
   }
-  if (options.body !== undefined) {
+  let payload: string | undefined;
+  if (options.form !== undefined) {
+    headers["content-type"] = "application/x-www-form-urlencoded";
+    payload = new URLSearchParams(options.form).toString();
+  } else if (options.body !== undefined) {
     headers["content-type"] = "application/json";
+    payload = JSON.stringify(options.body);
   }
 
   const response = await fetchImpl(url, {
-    method: options.method ?? (options.body === undefined ? "GET" : "POST"),
+    method: options.method ?? (payload === undefined ? "GET" : "POST"),
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: payload,
     signal,
   });
 
