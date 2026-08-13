@@ -5,10 +5,9 @@
   "private": true,
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.json",
+    "check": "npm run typecheck && npm test && npm run build",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "plugin:build": "npm run build && ./scripts/openclaw-sandbox.sh plugins build --entry ./dist/index.js",
-    "plugin:check": "npm run build && ./scripts/openclaw-sandbox.sh plugins build --entry ./dist/index.js --check",
-    "plugin:validate": "npm run build && ./scripts/openclaw-sandbox.sh plugins validate --entry ./dist/index.js",
+    "pretest": "npm run build",
     "test": "vitest run --config ./vitest.config.ts",
     "typecheck": "tsc -p tsconfig.check.json"
   },

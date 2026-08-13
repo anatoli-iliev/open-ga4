@@ -59,23 +59,30 @@ describe("the shipped bundle", () => {
     expect([...scopes]).toEqual(["https://www.googleapis.com/auth/analytics.readonly"]);
   });
 
-  it("contacts no host outside the documented allowlist", async () => {
+  it("mentions no URL that is neither contacted nor a documented signpost", async () => {
+    // Hosts the plugin actually opens a connection to. The runtime guarantee is
+    // enforced by assertAllowedUrl in ga4/http.ts and tested there; this scan is
+    // defence in depth against a hardcoded URL reaching the bundle unreviewed.
+    const contacted = ["analyticsadmin.googleapis.com", "analyticsdata.googleapis.com", "oauth2.googleapis.com"];
+
+    // Hosts that appear only as text shown to a human — a link in a "here is
+    // how to fix it" message, or the OAuth scope identifier. Never fetched.
+    // Adding to this list is a deliberate, reviewable decision.
+    const referencedOnly = [
+      "www.googleapis.com", // inside the analytics.readonly scope string
+      "console.cloud.google.com", // "enable the API here" link in errors.ts
+      "console.developers.google.com", // same link, as Google returns it in Help details
+    ];
+
+    const allowed = new Set([...contacted, ...referencedOnly]);
     const hosts = new Set<string>();
     for (const { text } of await readDistSources()) {
       for (const match of text.matchAll(/https:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) {
         hosts.add(match[1]!.toLowerCase());
       }
     }
-    // www.googleapis.com appears only inside the scope identifier, which is a
-    // constant string and never fetched.
-    const allowed = new Set([
-      "www.googleapis.com",
-      "analyticsadmin.googleapis.com",
-      "analyticsdata.googleapis.com",
-      "oauth2.googleapis.com",
-    ]);
-    const unexpected = [...hosts].filter((host) => !allowed.has(host));
-    expect(unexpected).toEqual([]);
+
+    expect([...hosts].filter((host) => !allowed.has(host))).toEqual([]);
   });
 
   it("writes nothing to disk outside the audit log", async () => {
