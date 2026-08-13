@@ -1,0 +1,19 @@
+{
+  "id": "ga4",
+  "name": "GA4 Analytics",
+  "description": "Add GA4 Analytics tools to OpenClaw.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "echo"
+    ]
+  }
+}
