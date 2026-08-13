@@ -65,13 +65,13 @@ describe("the egress allowlist", () => {
 
 describe("guardedFetch", () => {
   it("returns the parsed body on success", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ rowCount: 3 }));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ rowCount: 3 }));
     const body = await guardedFetch("https://analyticsdata.googleapis.com/v1beta/x", { fetchImpl });
     expect(body).toEqual({ rowCount: 3 });
   });
 
   it("sends a bearer token when one is supplied", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({}));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
     await guardedFetch("https://analyticsdata.googleapis.com/v1beta/x", {
       fetchImpl,
       accessToken: "token-value",
@@ -81,14 +81,14 @@ describe("guardedFetch", () => {
   });
 
   it("sends no authorization header when there is no token", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({}));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
     await guardedFetch("https://analyticsdata.googleapis.com/v1beta/x", { fetchImpl });
     const init = fetchImpl.mock.calls[0]![1] as RequestInit;
     expect((init.headers as Record<string, string>).authorization).toBeUndefined();
   });
 
   it("POSTs JSON when given a body and GETs otherwise", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({}));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
     await guardedFetch("https://analyticsdata.googleapis.com/v1beta/x", { fetchImpl });
     expect((fetchImpl.mock.calls[0]![1] as RequestInit).method).toBe("GET");
 
@@ -103,7 +103,7 @@ describe("guardedFetch", () => {
   });
 
   it("raises a Ga4HttpError carrying the status and parsed body", async () => {
-    const fetchImpl = vi.fn(async () =>
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse(
         { error: { code: 403, message: "User does not have sufficient permissions.", status: "PERMISSION_DENIED" } },
         403,
@@ -120,7 +120,7 @@ describe("guardedFetch", () => {
   });
 
   it("reads the OAuth endpoint's flat error shape", async () => {
-    const fetchImpl = vi.fn(async () =>
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse({ error: "invalid_grant", error_description: "Invalid JWT Signature." }, 400),
     );
     await expect(
@@ -129,7 +129,7 @@ describe("guardedFetch", () => {
   });
 
   it("strips credentials out of error messages", async () => {
-    const fetchImpl = vi.fn(async () =>
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse({ error: { message: 'bad assertion {"private_key":"-----BEGIN PRIVATE KEY-----abc"}' } }, 400),
     );
     const error = await guardedFetch("https://oauth2.googleapis.com/token", { fetchImpl })
@@ -139,7 +139,9 @@ describe("guardedFetch", () => {
   });
 
   it("falls back to status text when the body carries no message", async () => {
-    const fetchImpl = vi.fn(async () => new Response("", { status: 502, statusText: "Bad Gateway" }));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      new Response("", { status: 502, statusText: "Bad Gateway" }),
+    );
     await expect(
       guardedFetch("https://analyticsdata.googleapis.com/v1beta/x", { fetchImpl }),
     ).rejects.toThrow("502 Bad Gateway");
