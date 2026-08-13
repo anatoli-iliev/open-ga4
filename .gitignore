@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Never commit credentials. These patterns exist so an accidental `git add .`
+# cannot leak a Google service-account key or an OAuth token cache.
+*.pem
+*.key
+*-key.json
+*service-account*.json
+application_default_credentials.json
+.env
+.env.*
+!.env.example
+.sandbox/
