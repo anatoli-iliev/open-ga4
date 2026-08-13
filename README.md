@@ -158,18 +158,28 @@ Full detail in [PRIVACY.md](PRIVACY.md). The short version:
 
 ```bash
 npm install
+npm run check         # typecheck, then tests, then build
 npm test              # vitest, no network, no credentials
 npm run typecheck
-npm run plugin:validate
 ```
 
-`plugin:validate` builds and then runs OpenClaw's own manifest and entry validation through
-`scripts/openclaw-sandbox.sh`. That wrapper exists because `openclaw plugins build|validate`
-boots enough of the runtime to run config doctor and state migrations — against a real
-installation, that can rewrite your config and relocate your state files. The script
-redirects `HOME`, the XDG config/state/data directories and the OpenClaw config and state
-directories into a throwaway `.sandbox/` inside the repo, so a plugin build can never touch
-your own OpenClaw setup.
+`npm test` builds first, because `src/privacy/surface.test.ts` asserts the privacy
+guarantees against `dist/` — the bundle that actually ships — rather than against the
+source. `src/docs.test.ts` checks this file: every configuration example here is validated
+against the real config schema, and every `ga4_` tool name, npm script and Google host
+mentioned in the documentation must exist.
+
+`openclaw plugins build` and `openclaw plugins validate` understand only `defineToolPlugin`
+entries and reject this one, so `openclaw.plugin.json` is maintained by hand and
+`src/index.test.ts` asserts it matches what the code registers.
+
+If you do run the OpenClaw CLI against this repo, use `scripts/openclaw-sandbox.sh`.
+`openclaw plugins build|validate` boots enough of the runtime to run config doctor and
+state migrations; against a real installation that can rewrite your config and relocate
+your state files. Setting `OPENCLAW_STATE_DIR` alone is not enough, because migrations
+still probe the legacy paths under `$HOME`. The wrapper redirects `HOME`, the XDG
+config/state/data directories and the OpenClaw config and state directories into a
+throwaway `.sandbox/`, so nothing can touch your own OpenClaw setup.
 
 The design decisions, and what was rejected, are in [docs/DESIGN.md](docs/DESIGN.md).
 
