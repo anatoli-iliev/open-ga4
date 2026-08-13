@@ -1,0 +1,262 @@
+import { describe, expect, it, vi } from "vitest";
+import { resolveConfig } from "../config.js";
+import type { Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
+import { assertPropertyAllowed, normalizePropertyId } from "../privacy/policy.js";
+import type { Ga4Runtime } from "../runtime.js";
+import { compareTool, queryTool, realtimeTool, reportTool } from "./reports.js";
+
+type Recorded = { propertyId: string; request: RunReportRequest };
+
+function stubRuntime(
+  response: RunReportResponse = {},
+  configOverrides: Parameters<typeof resolveConfig>[0] = {},
+): { runtime: Ga4Runtime; calls: Recorded[]; realtimeCalls: Recorded[] } {
+  const calls: Recorded[] = [];
+  const realtimeCalls: Recorded[] = [];
+  const config = resolveConfig({ propertyId: "123456789", ...configOverrides });
+
+  const client = {
+    runReport: vi.fn(async (propertyId: string, request: RunReportRequest) => {
+      calls.push({ propertyId, request });
+      return response;
+    }),
+    runRealtimeReport: vi.fn(async (propertyId: string, request: RunReportRequest) => {
+      realtimeCalls.push({ propertyId, request });
+      return response;
+    }),
+  } as unknown as Ga4Client;
+
+  const runtime: Ga4Runtime = {
+    config,
+    client: async () => client,
+    principal: () => "reader@example.iam.gserviceaccount.com",
+    probes: () => [],
+    // Mirrors createRuntime().resolveProperty. runtime.test.ts covers the real
+    // one; keeping this in step matters because a stub that skips a check
+    // silently turns the test below into a test of the stub.
+    resolveProperty: (explicit?: string) => {
+      const propertyId = normalizePropertyId(explicit ?? config.defaultPropertyId!);
+      assertPropertyAllowed(propertyId, config.access);
+      return propertyId;
+    },
+    metadata: async () => ({}),
+    userScopedCustomDimensions: async () => new Set<string>(),
+  };
+
+  return { runtime, calls, realtimeCalls };
+}
+
+const SAMPLE: RunReportResponse = {
+  dimensionHeaders: [{ name: "pagePath" }],
+  metricHeaders: [
+    { name: "screenPageViews", type: "TYPE_INTEGER" },
+    { name: "activeUsers", type: "TYPE_INTEGER" },
+    { name: "userEngagementDuration", type: "TYPE_SECONDS" },
+    { name: "keyEvents", type: "TYPE_INTEGER" },
+  ],
+  rows: [
+    {
+      dimensionValues: [{ value: "/pricing" }],
+      metricValues: [{ value: "900" }, { value: "700" }, { value: "120" }, { value: "9" }],
+    },
+  ],
+  rowCount: 1,
+};
+
+describe("ga4_report", () => {
+  it("expands a preset into verified field names", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await reportTool(runtime).execute({ report: "top_pages" });
+
+    expect(calls[0]!.request.dimensions).toEqual([{ name: "pagePath" }]);
+    expect(calls[0]!.request.metrics?.map((m) => m.name)).toEqual([
+      "screenPageViews",
+      "activeUsers",
+      "userEngagementDuration",
+      "keyEvents",
+    ]);
+  });
+
+  it("defaults to the last 28 days, ending yesterday", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await reportTool(runtime).execute({ report: "top_pages" });
+    expect(calls[0]!.request.dateRanges).toEqual([{ startDate: "28daysAgo", endDate: "yesterday" }]);
+  });
+
+  it("never ends a range on today, whose data is still being processed", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    for (const range of ["last 7 days", "last 30 days", "yesterday"]) {
+      await reportTool(runtime).execute({ report: "top_pages", date_range: range });
+    }
+    for (const call of calls) {
+      expect(call.request.dateRanges?.[0]?.endDate).not.toBe("today");
+    }
+  });
+
+  it("sends limit as a string, because Google types it as int64", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await reportTool(runtime).execute({ report: "top_pages", limit: 5 });
+    expect(calls[0]!.request.limit).toBe("5");
+  });
+
+  it("uses the explicit property over the configured default", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await reportTool(runtime).execute({ report: "top_pages", property_id: "properties/987654321" });
+    expect(calls[0]!.propertyId).toBe("987654321");
+  });
+
+  it("refuses a measurement id before spending a request", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      reportTool(runtime).execute({ report: "top_pages", property_id: "G-ABC123XYZ" }),
+    ).rejects.toThrow(/measurement id/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("turns filter_contains into a dimension filter on the first dimension", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await reportTool(runtime).execute({ report: "top_pages", filter_contains: "/blog" });
+    expect(calls[0]!.request.dimensionFilter).toEqual({
+      filter: {
+        fieldName: "pagePath",
+        stringFilter: { matchType: "CONTAINS", value: "/blog", caseSensitive: false },
+      },
+    });
+  });
+
+  it("explains why a dimensionless report cannot be filtered", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    await expect(
+      reportTool(runtime).execute({ report: "overview", filter_contains: "/blog" }),
+    ).rejects.toThrow(/no dimension to filter on/);
+  });
+
+  it("redacts personal data out of the rendered rows", async () => {
+    const { runtime } = stubRuntime({
+      ...SAMPLE,
+      rows: [
+        {
+          dimensionValues: [{ value: "/reset?token=9f8e7d6c5b4a39281706f5e4&user=ada@example.com" }],
+          metricValues: [{ value: "1" }, { value: "1" }, { value: "1" }, { value: "0" }],
+        },
+      ],
+    });
+    const result = await reportTool(runtime).execute({ report: "top_pages" });
+    expect(result.markdown).not.toContain("ada@example.com");
+    expect(result.markdown).not.toContain("9f8e7d6c5b4a39281706f5e4");
+    expect((result.details as { redactions: number }).redactions).toBeGreaterThan(0);
+  });
+
+  it("reports the property and fields it actually used", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    const result = await reportTool(runtime).execute({ report: "top_pages" });
+    expect(result.details).toMatchObject({
+      propertyId: "123456789",
+      dimensions: ["pagePath"],
+    });
+  });
+
+  it("refuses a property outside the allowlist without calling Google", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE, {
+      propertyId: "123456789",
+      privacy: { propertyAllowlist: ["555000111"] },
+    });
+    await expect(reportTool(runtime).execute({ report: "top_pages" })).rejects.toThrow(
+      /not in this plugin's allowlist/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("ga4_compare", () => {
+  it("asks for two non-overlapping ranges of equal length", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await compareTool(runtime).execute({ report: "channels", date_range: "last 7 days" });
+
+    const ranges = calls[0]!.request.dateRanges!;
+    expect(ranges).toHaveLength(2);
+    expect(ranges[0]!.name).toBe("current");
+    expect(ranges[1]!.name).toBe("previous");
+    expect(ranges[1]!.endDate < ranges[0]!.startDate.replace("daysAgo", "")).toBeTruthy();
+  });
+
+  it("says what is being compared with what", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    const result = await compareTool(runtime).execute({ report: "channels" });
+    expect(result.markdown).toMatch(/Comparing last 28 days against the previous 28 days/);
+  });
+});
+
+describe("ga4_realtime", () => {
+  it("uses the realtime endpoint with a minute range, not a date range", async () => {
+    const { runtime, realtimeCalls, calls } = stubRuntime(SAMPLE);
+    await realtimeTool(runtime).execute({});
+    expect(calls).toHaveLength(0);
+    expect(realtimeCalls).toHaveLength(1);
+    expect(realtimeCalls[0]!.request).toMatchObject({
+      minuteRanges: [{ startMinutesAgo: 29, endMinutesAgo: 0 }],
+    });
+  });
+
+  it("warns that realtime is provisional and not comparable", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    const result = await realtimeTool(runtime).execute({});
+    expect(result.markdown).toMatch(/provisional/);
+    expect(result.markdown).toMatch(/not comparable/);
+  });
+});
+
+describe("ga4_query", () => {
+  it("rewrites a metric Google renamed, and says so", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    const result = await queryTool(runtime).execute({ metrics: ["conversions"] });
+    expect(calls[0]!.request.metrics).toEqual([{ name: "keyEvents" }]);
+    expect(result.markdown).toMatch(/renamed conversions to keyEvents/);
+  });
+
+  it("blocks a person-identifying dimension before calling Google", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      queryTool(runtime).execute({ metrics: ["sessions"], dimensions: ["userId"] }),
+    ).rejects.toThrow(/identifies individual people/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("allows it once explicitly opted in", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE, {
+      propertyId: "123456789",
+      privacy: { allowUserIdentifyingDimensions: true },
+    });
+    await queryTool(runtime).execute({ metrics: ["sessions"], dimensions: ["userId"] });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("rejects more dimensions than Google accepts, without spending a request", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      queryTool(runtime).execute({
+        metrics: ["sessions"],
+        dimensions: Array.from({ length: 10 }, (_, i) => `d${i}`),
+      }),
+    ).rejects.toThrow(/allows 9 dimensions/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sorts by a metric when order_by names one", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await queryTool(runtime).execute({ metrics: ["sessions"], order_by: "sessions" });
+    expect(calls[0]!.request.orderBys).toEqual([{ desc: true, metric: { metricName: "sessions" } }]);
+  });
+
+  it("sorts by a dimension when order_by names something else", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await queryTool(runtime).execute({
+      metrics: ["sessions"],
+      dimensions: ["date"],
+      order_by: "date",
+    });
+    expect(calls[0]!.request.orderBys).toEqual([
+      { desc: true, dimension: { dimensionName: "date" } },
+    ]);
+  });
+});
