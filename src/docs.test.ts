@@ -68,8 +68,9 @@ describe("documented JSON", () => {
           continue;
         }
         if (!Value.Check(configSchema, config)) {
+          // typebox 1.3 reports `instancePath`; there is no `path` field.
           const problems = [...Value.Errors(configSchema, config)]
-            .map((issue) => `${issue.path || "(root)"}: ${issue.message}`)
+            .map((issue) => `${issue.instancePath || "(root)"}: ${issue.message}`)
             .join("; ");
           rejected.push(`${file}:${block.line} — ${problems}`);
         }
