@@ -93,17 +93,26 @@ picks correctly:
 
 | Tool | Purpose |
 | --- | --- |
-| `ga4_diagnose` | Check every setup requirement and print the exact fix for the first failure. |
-| `ga4_properties` | List GA4 properties the credential can read, with names and IDs. |
-| `ga4_fields` | Search the dimension and metric catalog by keyword. |
-| `ga4_report` | The workhorse: presets plus full custom dimension/metric/filter control. |
-| `ga4_realtime` | Active users in the last 30 minutes. |
-| `ga4_compare` | Two periods side by side with deltas and percentage change. |
+| `ga4_diagnose` | Check every setup requirement, print the exact fix for the first failure, and list the properties the credential can read. |
+| `ga4_fields` | Search the property's live dimension and metric catalog by keyword. |
+| `ga4_report` | The workhorse: one enum picks a ready-made report. |
+| `ga4_compare` | The same reports across two consecutive periods. |
+| `ga4_realtime` | Active users in roughly the last 30 minutes. |
+| `ga4_query` | The escape hatch: explicit dimensions, metrics, filters and sort. |
 
-`ga4_report` carries a `preset` enum (`top_pages`, `traffic_sources`,
-`overview`, …) that expands to a verified dimension/metric combination. The
-model can name an intent and be right, or drop to explicit `dimensions` and
-`metrics` when it needs something the presets do not cover.
+`ga4_report` takes a single `report` enum that expands to a verified
+dimension/metric combination, so naming an intent is enough and there is
+nothing to guess. Anything the presets do not cover goes to `ga4_query`.
+
+Splitting those two rather than putting a `preset` parameter alongside optional
+`dimensions` and `metrics` on one tool keeps the common tool's schema to one
+enum, which is the whole point: a model that only has to pick an enum value
+cannot pick an incompatible dimension/metric pair.
+
+A separate `ga4_properties` was in the first draft and was folded into
+`ga4_diagnose`. Property discovery is nearly always something you do because
+setup is not working yet, and every tool schema is spent from the context
+window of every conversation whether it is used or not.
 
 Results render as markdown tables, not raw JSON: fewer tokens, and the model
 reads them more reliably.
