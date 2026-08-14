@@ -35,28 +35,34 @@ npm run build         # tsc -p tsconfig.json, emits dist/
 npm test              # vitest run
 ```
 
-**Build before you test.** `src/privacy/surface.test.ts` asserts against `dist/` — the built
-artifact that actually ships — not against the source. Run it without building and it reads
-whatever `dist/` happened to contain last, which means it can pass on code you have already
-deleted and fail on code you have already fixed. Build first, every time.
+**`npm test` builds first.** `pretest` runs `npm run build`, because
+`src/privacy/surface.test.ts` asserts against `dist/` — the built artifact that actually
+ships — not against the source. Invoking `vitest` directly bypasses that and reads whatever
+`dist/` happened to contain last, which means it can pass on code you have already deleted
+and fail on code you have already fixed. Prefer `npm test`.
 
 No test needs network access and no test needs credentials. If you find yourself wanting
 either, you are writing an integration test; record the response as a fixture instead. A
 live read-only smoke test against a real property is a manual step, run by hand, and never
 part of the suite — CI has no credentials and must never need any.
 
-Commit messages here carry a test count as their last line (`203 tests.`). Take it from the
-vitest summary and keep the convention.
+Commit messages that change the suite carry the test count as their last line. Take it from
+the vitest summary of the run you actually did.
 
 ---
 
 ## Never run `openclaw` directly from this repo
 
-Use the wrapper:
+There is nothing here to validate through the CLI. `openclaw plugins build` and
+`openclaw plugins validate` understand only `defineToolPlugin` entries and reject this one,
+which is a `definePluginEntry`, so `openclaw.plugin.json` is maintained by hand and
+`src/index.test.ts` asserts it matches what the code registers. `npm run check` is the check
+that matters.
+
+If you do run the OpenClaw CLI against this repo for any other reason, use the wrapper:
 
 ```bash
-npm run build
-./scripts/openclaw-sandbox.sh plugins validate --entry ./dist/index.js
+./scripts/openclaw-sandbox.sh <command>
 ```
 
 `openclaw plugins build` and `openclaw plugins validate` boot enough of the host runtime to
@@ -85,7 +91,7 @@ README is worth nothing on its own. Each one is checked against the built bundle
 | --- | --- | --- |
 | Contacts only `oauth2.googleapis.com`, `analyticsdata.googleapis.com`, `analyticsadmin.googleapis.com` | `ALLOWED_HOSTS` + `assertAllowedUrl` in `src/ga4/http.ts`, checked before any request is issued | `src/ga4/http.test.ts`, and a scan of `dist/` in `src/privacy/surface.test.ts` |
 | Requests no OAuth scope but `analytics.readonly` | the scope constant is the only one in the codebase | `src/privacy/surface.test.ts` |
-| Never calls `properties.audienceExports`, `properties.audienceLists` or `runAccessReport` — the only Data API surfaces that return per-person rows | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `dist/` |
+| Never calls `properties.audienceExports`, `properties.audienceLists` or the Admin API's `runAccessReport` — the three surfaces built to return rows keyed to an individual visitor | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `dist/` |
 | Writes no report data to disk | nothing outside the optional audit log opens a file for writing | `src/privacy/surface.test.ts` scans `dist/` for `writeFile`, `appendFile`, `createWriteStream`, `mkdir` |
 | Blocks person-identifying dimensions unless opted in | `assertDimensionsAllowed` in `src/privacy/policy.ts` | `src/privacy/policy.test.ts` |
 | Redacts identifiers out of dimension values | `redactText` in `src/privacy/redact.ts` | `src/privacy/redact.test.ts` |

@@ -8,10 +8,10 @@ here and the code disagree, the code is right and this document is a bug.
 
 | Guarantee | Enforced in | Proven by |
 | --- | --- | --- |
-| Only three Google hosts are ever contacted | `src/ga4/http.ts` — `assertAllowedUrl`, before every `fetch` | `src/ga4/http.test.ts`, `src/privacy/surface.test.ts` |
+| Only three Google hosts are ever contacted | `src/ga4/http.ts` — `assertAllowedUrl` before every `fetch`, and `redirect: "error"` so a 302 cannot reach a fourth | `src/ga4/http.test.ts`, `src/privacy/surface.test.ts` |
 | Only one OAuth scope is ever requested | `src/auth/jwt.ts` — one `ANALYTICS_READONLY_SCOPE` constant | `src/privacy/surface.test.ts` |
-| No per-person Google API surface is called | `src/ga4/client.ts` — five read methods, the whole client | `src/privacy/surface.test.ts` |
-| Dimension values are redacted before the model sees them | `src/privacy/redact.ts`, applied in `src/ga4/format.ts` | `src/privacy/redact.test.ts` |
+| The audience-export and access-report surfaces are never called | `src/ga4/client.ts` — five read methods, the whole client | `src/privacy/surface.test.ts` |
+| Dimension values in reports are redacted before the model sees them | `src/privacy/redact.ts`, applied in `src/ga4/format.ts` | `src/privacy/redact.test.ts` |
 | Person-identifying dimensions are refused by default | `src/privacy/policy.ts` — `assertDimensionsAllowed` | `src/privacy/policy.test.ts` |
 | Credentials never reach output, logs or errors | `src/privacy/redact.ts` — `redactText`, called in `src/ga4/http.ts` | `src/ga4/http.test.ts`, `src/privacy/redact.test.ts` |
 | Nothing is written to disk | no writer exists outside the opt-in audit log | `src/privacy/surface.test.ts` |
@@ -29,7 +29,7 @@ touches the network.
 | --- | --- | --- |
 | `oauth2.googleapis.com` | Exchange a credential for a one-hour access token | Service account: an RS256-signed JWT assertion carrying the service-account email, the single scope, the audience, and issue/expiry times. gcloud user credential: `client_id`, `client_secret`, `refresh_token`. |
 | `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata`, `checkCompatibility` | Bearer token, numeric property id, dimension and metric names, date ranges, any filters and sort you asked for, a row limit. |
-| `analyticsadmin.googleapis.com` | `accountSummaries` — the property list `ga4_diagnose` prints | Bearer token and a page size. Nothing else. |
+| `analyticsadmin.googleapis.com` | `accountSummaries` — the property list `ga4_diagnose` prints | Bearer token, a page size, and — when the account list runs past one page — the continuation token Google itself returned. Nothing else. |
 
 Never sent, to any host: your conversation, your prompts, the model's output, your
 hostname, username, file paths, an install id, a version ping, or anything
@@ -41,7 +41,10 @@ the key.
 The check is exact-match on `URL.host`, and only `https:` passes. Tests cover the
 usual bypasses — a lookalike suffix, a userinfo segment smuggling the real host
 before an `@`, a different Google API, a non-default port, plain HTTP, a `file://`
-URL — and assert the refusal happens before `fetch` is called at all.
+URL — and assert the refusal happens before `fetch` is called at all. Redirects are
+not followed: `guardedFetch` passes `redirect: "error"`, because the allowlist is
+checked once, before the request, and a 302 would otherwise carry it to a host that
+was never checked.
 
 **Caveat.** The plugin uses the `fetch` it is given. If OpenClaw is configured with
 an HTTP proxy, or your machine has a TLS-intercepting middlebox, this traffic
@@ -63,32 +66,47 @@ Google surface used: `runReport`, `runRealtimeReport`, `getMetadata`,
 one hand-written file — there is no generated SDK where an update could quietly
 introduce `deleteProperty`.
 
-**Call the three per-person surfaces.** The Data and Admin APIs have exactly three
-endpoints returning rows about identified individuals rather than aggregates:
-`properties.audienceExports`, `properties.audienceLists`, and `runAccessReport`.
-This plugin calls none of them, and `src/privacy/surface.test.ts` walks every `.js`
-file in `dist/` asserting the strings `audienceExport`, `audienceList`,
-`runAccessReport` and `userDataRetention` do not appear. That test is the whole
-claim — deliberately narrower than "cannot read per-user data", which would be an
-overclaim (section 7).
+**Call the audience-export or access-report endpoints.** The plugin never calls
+`properties.audienceExports`, `properties.audienceLists`, or the Admin API's
+`runAccessReport`, and `src/privacy/surface.test.ts` walks every `.js` file in
+`dist/` asserting the strings `audienceExport`, `audienceList`, `runAccessReport`
+and `userDataRetention` do not appear.
+
+That test is the whole claim, and it is deliberately narrower than "cannot read
+per-user data". It checks four strings in the built bundle; it proves nothing about
+rows. `runReport`, which the plugin does call, returns a row per person the moment a
+`userId` dimension is used. That is why section 5 refuses that dimension by default
+rather than leaning on this test.
 
 ## 4. What it does to data before you see it
 
 Every dimension value in every report passes through `redactValue`
 (`src/privacy/redact.ts`) as the report is rendered in `src/ga4/format.ts`. That is
 the last point at which a stray email in a URL can be stopped, so it runs on every
-row of every tool's output unless you turn it off.
+row returned by `ga4_report`, `ga4_compare`, `ga4_realtime` and `ga4_query`, unless
+you turn it off.
+
+The other two tools do not render reports and do not go through `format.ts`, so
+their output is not redacted. `ga4_fields` returns GA4 field names and Google's own
+descriptions of them; `ga4_diagnose` returns the property ids, property names and
+account names the credential can reach, plus one active-user count. Both escape `|`
+and collapse newlines in their table cells, as report rows do, but nothing in either
+is matched against the patterns below.
 
 | Masked | Recognised as | Replaced with |
 | --- | --- | --- |
-| Query-parameter values not on the keep list | anything after `=` in the query string | `[redacted]` |
+| Query-parameter values not on the keep list | anything after `=` in the query string, and in a `#` fragment, where implicit-flow tokens land | `[redacted]` |
 | JWTs | `eyJ…` with three base64url segments | `[redacted:jwt]` |
-| Email addresses | including percent-encoded `%40`, which is how they usually reach GA4 | `[redacted:email]` |
+| Email addresses | plain, and with the `@` percent-encoded as `%40` or doubly as `%2540` | `[redacted:email]` |
 | UUIDs | RFC 4122 versions 1–8 | `[redacted:uuid]` |
 | Phone numbers | E.164 (`+14155552671`) and `(415) 555-2671` | `[redacted:phone]` |
 | Long opaque tokens | 32+ characters of `[A-Za-z0-9_-]` with at least one digit and one letter | `[redacted:token]` |
 | Card numbers | 13–19 digit runs that pass a Luhn check | `[redacted:card]` |
 | Your own patterns | `privacy.extraRedactionPatterns` in config | `[redacted:custom]` |
+
+This is a list of patterns, not an understanding of your data. A format it does not
+know — an internal reference id, a name in a page title, a national identifier —
+passes through untouched. Section 7 says more about what that costs you.
 
 Query strings are handled as raw text rather than round-tripped through `new URL()`,
 which re-encodes relative paths into something you no longer recognise. Identifiers
@@ -123,10 +141,14 @@ there is no switch.
 ## 5. What is blocked outright
 
 `src/privacy/policy.ts` refuses certain *questions* before a request is spent. Blocked
-by default: `userId`, `signedInWithUserId`, any dimension beginning `customUser:`, and
-any dimension the property's own live metadata reports as a user-scoped custom
-definition — resolved at runtime in `src/runtime.ts`, so a custom dimension added
-after this plugin shipped is still classified correctly with no plugin update.
+by default: `userId`, `signedInWithUserId`, and any dimension whose name begins
+`customUser:` — the prefix GA4 gives user-scoped custom dimensions, so one created on
+your property after this plugin shipped is blocked too, with no plugin update.
+
+`src/runtime.ts` also reads the property's live metadata and hands `classifyDimension`
+the custom definitions it finds there. That set is filtered to the same `customUser:`
+prefix, so today it confirms the prefix rule rather than extending it; the outcome
+above comes from the prefix, not from the metadata call.
 
 The refusal names the exact key that lifts it,
 `plugins.entries.ga4.config.privacy.allowUserIdentifyingDimensions`, and suggests
@@ -145,9 +167,13 @@ in `src/privacy/policy.test.ts` pins the choice: *"permits free-text dimensions,
 are redacted rather than blocked"*.
 
 Those same values are visitor-authored — anyone can put a string in your `pagePath` by
-visiting a URL — so rows are rendered inside a fenced block introduced as untrusted
-data rather than interpolated into prose, and results declare themselves as
-network-sourced content. A mitigation, not a solution.
+visiting a URL — so report rows are rendered inside a fenced block introduced as
+untrusted data rather than interpolated into prose. Every tool also marks its result
+as network-sourced content, but that marker is inert on older hosts: the string
+`resultContentSource` does not occur anywhere in openclaw 2026.7.1-2, which is what
+this plugin is built against. It is emitted unconditionally so it takes effect on
+hosts that do read it. Until then the fenced, labelled block is the whole of it.
+A mitigation, not a solution.
 
 ## 6. What is stored
 
@@ -174,7 +200,9 @@ per report the agent runs — `ga4_report`, `ga4_compare`, `ga4_realtime` and `g
 — recording the time, the property id, the tool name, the dimensions and metrics asked
 for, the date range, and how many rows came back. It records no response bodies, no row
 values and no totals: a count of rows, never the rows. `ga4_fields` and `ga4_diagnose`
-are not logged, because neither returns measurements.
+are not logged. The log covers the reports the agent asked for, not setup and
+discovery — and `ga4_diagnose` does run one live `activeUsers` query as its Data API
+check, so if you need a record of every Data API call this file is not it.
 
 It exists so you can answer "what did the agent look at last Tuesday" without keeping
 the data itself. If the file cannot be written the plugin warns and continues, because
@@ -223,20 +251,29 @@ From a clone of the repo, about five minutes:
 # The egress allowlist, in full, in the file that enforces it.
 grep -n -A6 'ALLOWED_HOSTS' src/ga4/http.ts
 
-# Every https host in the built bundle. Expect the three above, plus
-# www.googleapis.com, which appears only inside the scope identifier.
+# Every https host in the built bundle. Expect five lines: the three above,
+# www.googleapis.com (only ever inside the OAuth scope identifier), and
+# console.cloud.google.com, which src/ga4/errors.ts prints as the "enable this
+# API" link and never fetches — it is not on the allowlist, so a request to it
+# would be refused.
 npm run build && grep -rhoE 'https://[a-z0-9.-]+' dist | sort -u
 
-# Every OAuth scope in the source. Expect exactly one line.
+# Every OAuth scope in the source. Expect three lines: the constant in
+# src/auth/jwt.ts, and the two tests that pin it.
 grep -rn 'googleapis.com/auth' src
 
-# The three per-person API surfaces. Expect no hits outside the test.
+# The audience-export and access-report endpoints. Expect three hits, all in
+# src/privacy/surface.test.ts — the test that asserts they are nowhere else —
+# and nothing at all from dist/.
 grep -rn 'audienceExport\|audienceList\|runAccessReport' src dist
 
-# Anything that writes to disk. Expect nothing outside the audit log.
+# Anything that writes to disk. Expect three hits: two in src/privacy/audit.ts,
+# which is the audit log, and one in src/privacy/surface.test.ts, the test that
+# names these APIs in order to assert nothing else calls them.
 grep -rn 'writeFile\|appendFile\|createWriteStream' src
 
-# The structural guarantees, asserted against dist/ rather than src/.
+# The structural guarantees, asserted against dist/ rather than src/. Expect
+# both to pass. No test needs a network connection or a Google credential.
 npx vitest run src/privacy/surface.test.ts && npm test
 
 # The entire authentication path — key handling, signing, scope.
@@ -246,9 +283,9 @@ wc -l src/auth/jwt.ts src/auth/credentials.ts src/auth/token.ts
 npm ls --omit=dev --all
 ```
 
-The last command prints `typebox` and nothing else. That is the point of the dependency
-policy: auditing this plugin's network and data behaviour is a morning's reading, not a
-supply-chain investigation.
+The last command prints one dependency, `typebox`, with nothing under it. That is the
+point of the dependency policy: auditing this plugin's network and data behaviour is a
+morning's reading, not a supply-chain investigation.
 
 ---
 

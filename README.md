@@ -33,9 +33,16 @@ names an intent instead of guessing that "pageviews" is spelled `screenPageViews
 
 ## Install
 
+No release has been published to npm yet, so there is nothing to install from the registry
+today. Once the first release is out, this is the command:
+
 ```bash
 openclaw plugins install openclaw-plugin-ga4
 ```
+
+Until then, clone this repository and run `npm install`, then `npm run build`. The entry
+point is the built `dist/index.js`, which `package.json` declares under
+`openclaw.extensions`.
 
 Requires OpenClaw `>=2026.7.1`. Then add a config entry:
 
@@ -61,8 +68,8 @@ already authenticated for another Google tool, you are already set up.
 
 ## Setup
 
-Five steps, about seven minutes. [SETUP.md](SETUP.md) has the click-by-click version with
-console links.
+Five steps here, eight in the click-by-click version — about ten minutes.
+[SETUP.md](SETUP.md) has it with console links.
 
 1. **Create a Google Cloud project** and enable the Google Analytics Data API. Enable the
    Admin API too if you want `ga4_diagnose` to list your properties by name; reports work
@@ -87,12 +94,21 @@ console links.
 
 - **One runtime dependency.** `typebox`, which OpenClaw already depends on and which has no
   dependencies of its own. OAuth is a signed JWT built with `node:crypto`; the API is called
-  with `fetch`. No gRPC stack, no generated protos, no `google-auth-library`, no Python
-  virtualenv. You can read the whole client in one sitting.
+  with `fetch`. No gRPC stack, no generated protos, no `google-auth-library`, no Python.
+  You can read the whole client in one sitting.
 - **An egress allowlist enforced in code.** Every request goes through one guard that
   rejects any host other than `oauth2.googleapis.com`, `analyticsdata.googleapis.com` and
-  `analyticsadmin.googleapis.com`, before the request is made. A test scans the built
-  bundle and fails if any other host appears in it.
+  `analyticsadmin.googleapis.com`, before the request is made, and redirects are an error
+  rather than something to follow, so a 302 cannot reach a host that was never checked. A
+  test scans the built bundle for `https://` URLs and fails on any host that is neither one
+  of those three nor on a short reviewed list of addresses that only ever appear as text:
+  `console.cloud.google.com` and `console.developers.google.com`, which are the "enable the
+  API here" link printed in an error message, and `www.googleapis.com`, which appears
+  inside the OAuth scope identifier. Your credentials go to Google and to no third-party
+  service. The allowlist constrains which host the plugin asks for, not what your system
+  does with the request: if OpenClaw or your machine is configured with an HTTP proxy or a
+  TLS-intercepting middlebox, this traffic traverses it exactly as all other OpenClaw
+  traffic does.
 - **Read-only by scope.** The only scope requested is
   `https://www.googleapis.com/auth/analytics.readonly`, and a test asserts no other
   `googleapis.com/auth/` string exists in the shipped bundle.
@@ -112,9 +128,8 @@ Verified comparisons, each backed by a fetched artifact:
 
 | Project | Verified fact | Here instead |
 | --- | --- | --- |
-| [`byungkyu/google-analytics`](https://clawhub.ai/byungkyu/google-analytics) — the most-installed GA4 skill on ClawHub, ~11,189 installs | Proxies the user's Google OAuth token through `api.maton.ai`, and exposes the write-capable Admin API. | Your credentials stay on your machine and go only to Google. Three allowed hosts, `analytics.readonly` scope, no write path. |
 | [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request — a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this plugin cannot honour raises an error naming why, rather than being dropped — asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
-| [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | Shells out to Python, requiring `uv` and a virtualenv. | A TypeScript plugin. No host binaries, no `pip`, no shell tool. |
+| [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | `skills/ga4/SKILL.md` declares `requires: {"bins": ["python3"]}` and every example runs `python3 scripts/ga4_query.py`. Those scripts tell you to `pip install google-analytics-data google-auth-oauthlib` on the host. | A TypeScript plugin that runs in the OpenClaw process. No Python, no `pip`, no shell tool. |
 
 ## Analytics data is untrusted input
 
@@ -128,11 +143,15 @@ for SEO reasons. An agent that reads those values turns it into a prompt-injecti
 This plugin does two things about it:
 
 1. Every tool registers with `resultContentSource: "network"`, OpenClaw's marker for
-   externally controlled content, so results are labelled as untrusted rather than as
-   trusted tool output.
-2. Rows are rendered inside a fenced block introduced as data supplied by site visitors,
-   rather than interpolated into prose. Values have `|` escaped and newlines collapsed, so
-   a row cannot forge table structure or start a line of its own.
+   externally controlled content. The field landed in OpenClaw 2026.8; the newest released
+   host today is 2026.7.1-2, which does not read it, so there the field is emitted and
+   ignored. It is set unconditionally so the labelling takes effect when you upgrade. Until
+   then the framing below is what separates visitor-authored text from trusted output.
+2. Report rows are rendered inside a fenced block introduced as data supplied by site
+   visitors, rather than interpolated into prose. Every table cell of every tool has `|`
+   escaped and newlines collapsed, so a value cannot forge table structure or start a line
+   of its own. `ga4_fields` and `ga4_diagnose` list field, property and account names in a
+   plain table without that fence.
 
 This reduces risk. It does not eliminate prompt injection, and nothing does. If you wire an
 agent to act on GA4 data — send email, file tickets, change bids — keep a human in that
@@ -142,17 +161,22 @@ loop. The numbers are trustworthy. The strings are not.
 
 Full detail in [PRIVACY.md](PRIVACY.md). The short version:
 
-- Dimension values pass through redaction before the model sees them: emails, phone
-  numbers, UUIDs, JWTs, card numbers confirmed by Luhn, long opaque tokens, and the values
-  of query parameters outside a keep-list. The report says how many values were masked.
+- Every dimension value in a report passes through redaction before the model sees it,
+  unless you set `privacy.redact` to `false`: emails, phone numbers, UUIDs, JWTs, card
+  numbers confirmed by Luhn, long opaque tokens, and the values of query parameters outside
+  a keep-list. The report says how many values were masked.
 - `userId` and user-scoped custom dimensions are refused unless you explicitly opt in.
-- The plugin never calls `properties.audienceExports`, `properties.audienceLists` or
-  `runAccessReport` — the only Data API surfaces that return per-person rows — and a test
-  asserts those strings are absent from the built bundle.
+- The plugin never calls `properties.audienceExports`, `properties.audienceLists` or the
+  Admin API's `runAccessReport` — the three surfaces built to hand back rows keyed to an
+  individual visitor — and a test asserts those strings are absent from the built bundle.
+  That is narrower than "cannot read per-user data": `runReport` returns per-person rows as
+  soon as the `userId` dimension is used, which is why that dimension is blocked by default.
 - **What this does not protect you from:** report data returned to the agent is seen by
-  whatever model provider you have configured. This plugin controls what leaves Google and
-  what reaches your machine. It has no say in what your own LLM provider does with a report
-  once the agent reads it. Choose the property, the date range and the provider accordingly.
+  whatever model provider you have configured. This plugin controls what it asks Google for
+  and what it hands to the agent. Redaction runs here, on a response that has already left
+  Google and arrived on your machine in full, so it changes what the model sees and not what
+  Google holds. It has no say in what your own LLM provider does with a report once the
+  agent reads it. Choose the property, the date range and the provider accordingly.
 
 ## Development
 
