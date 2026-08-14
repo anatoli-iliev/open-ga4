@@ -162,3 +162,11 @@ describe("guardedFetch", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("redirects", () => {
+  it("refuses to follow them, so a 302 cannot reach an unchecked host", async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+    await guardedFetch("https://analyticsdata.googleapis.com/v1beta/x", { fetchImpl });
+    expect((fetchImpl.mock.calls[0]![1] as RequestInit).redirect).toBe("error");
+  });
+});

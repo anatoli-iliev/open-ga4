@@ -131,3 +131,24 @@ describe("redactText", () => {
     expect(redactText(text)).toBe(text);
   });
 });
+
+describe("bypasses found by adversarial audit", () => {
+  it("masks a doubly percent-encoded email", () => {
+    expect(redactValue("/u/ada%2540example.com", opts).value).toBe("/u/[redacted:email]");
+  });
+
+  it("masks values in a fragment, where implicit-flow tokens land", () => {
+    const result = redactValue("/callback#access_token=abc123&state=xyz", opts);
+    expect(result.value).toBe("/callback#access_token=[redacted]&state=[redacted]");
+    expect(result.redactions).toBe(2);
+  });
+
+  it("masks a fragment that follows a query string", () => {
+    const result = redactValue("/a?utm_source=news#id_token=secret", opts);
+    expect(result.value).toBe("/a?utm_source=news#id_token=[redacted]");
+  });
+
+  it("still keeps a fragment with no key=value pairs readable", () => {
+    expect(redactValue("/docs#installation", opts).value).toBe("/docs#installation");
+  });
+});

@@ -136,7 +136,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       `${principal} cannot read ${property}. Google gives the same answer whether the property ` +
         `does not exist or the credential simply cannot see it, so it may be either.`,
       `In Google Analytics open Admin > Property access management, add ${principal}, and give it ` +
-        `the Viewer role. Then run ga4_properties to confirm what this credential can reach.`,
+        `the Viewer role. Then run ga4_diagnose to confirm what this credential can reach.`,
     );
   }
 
@@ -144,7 +144,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
     return new Ga4Error(
       "PROPERTY_NOT_FOUND",
       `Google Analytics has no property with id ${context.propertyId ?? "that id"}.`,
-      "Run ga4_properties to list the properties this credential can reach, or find the id in " +
+      "Run ga4_diagnose to list the properties this credential can reach, or find the id in " +
         "Google Analytics under Admin > Property details.",
     );
   }

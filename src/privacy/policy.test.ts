@@ -138,8 +138,8 @@ describe("normalizePropertyId", () => {
     expect(() => normalizePropertyId(input)).toThrow(/Google tag or Ads id/);
   });
 
-  it("points at ga4_properties when the input is empty", () => {
-    expect(() => normalizePropertyId("   ")).toThrow(/ga4_properties/);
+  it("points at a tool that exists when the input is empty", () => {
+    expect(() => normalizePropertyId("   ")).toThrow(/ga4_diagnose/);
   });
 
   it("rejects something too short to be a property id", () => {

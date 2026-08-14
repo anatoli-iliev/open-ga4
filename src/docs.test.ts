@@ -160,3 +160,36 @@ describe("the privacy documentation", () => {
     expect(privacy).toMatch(/model provider|LLM provider/i);
   });
 });
+
+describe("the source", () => {
+  /**
+   * Six error messages once told users to "run ga4_properties", a tool that was
+   * designed early, folded into ga4_diagnose, and never existed. They were the
+   * messages for the two most common setup failures, so the two people most in
+   * need of help were sent to a dead end. This makes that a build failure.
+   */
+  it("never tells a user to run a ga4_ tool that is not registered", async () => {
+    const known = new Set<string>(TOOL_NAMES);
+    const { readdir } = await import("node:fs/promises");
+    const offenders: string[] = [];
+
+    async function walk(dir: string): Promise<void> {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+          const text = await readFile(full, "utf8");
+          for (const match of text.matchAll(/\bga4_[a-z_]+\b/g)) {
+            if (!known.has(match[0])) {
+              offenders.push(`${path.relative(repoRoot, full)}: ${match[0]}`);
+            }
+          }
+        }
+      }
+    }
+
+    await walk(path.join(repoRoot, "src"));
+    expect([...new Set(offenders)]).toEqual([]);
+  });
+});

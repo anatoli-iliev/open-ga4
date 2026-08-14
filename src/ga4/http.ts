@@ -113,6 +113,10 @@ export async function guardedFetch(
     headers,
     body: payload,
     signal,
+    // The allowlist is checked once, before the request. Following a redirect
+    // would let a 302 reach a host that was never checked, so redirects are an
+    // error rather than something to chase.
+    redirect: "error",
   });
 
   const raw = await response.text();

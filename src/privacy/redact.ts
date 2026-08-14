@@ -68,7 +68,7 @@ const VALUE_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
     label: "email",
     // Also matches percent-encoded "@" (%40), which is how emails usually
     // survive a trip through a URL and into GA4.
-    pattern: /\b[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi,
+    pattern: /\b[A-Za-z0-9._%+-]+(?:@|%40|%2540)[A-Za-z0-9.\-%]+\.[A-Za-z]{2,}\b/gi,
   },
   {
     label: "uuid",
@@ -121,14 +121,17 @@ function redactQueryString(
   value: string,
   keep: readonly string[],
 ): { value: string; redactions: number } {
-  const separator = value.indexOf("?");
+  // A fragment carries key=value pairs just as often as a query string does —
+  // OAuth implicit-flow tokens land there — so both delimiters are treated the
+  // same way.
+  const separator = firstIndexOfAny(value, ["?", "#"]);
   if (separator === -1) {
     return { value, redactions: 0 };
   }
   const kept = new Set(keep.map((name) => name.toLowerCase()));
   const head = value.slice(0, separator + 1);
   const tail = value.slice(separator + 1);
-  // Preserve a trailing fragment; it is redacted by the value patterns instead.
+  // A fragment after a query string is handled as its own pair list.
   const hash = tail.indexOf("#");
   const query = hash === -1 ? tail : tail.slice(0, hash);
   const fragment = hash === -1 ? "" : tail.slice(hash);
@@ -154,10 +157,25 @@ function redactQueryString(
     })
     .join("&");
 
-  return { value: `${head}${rebuilt}${fragment}`, redactions };
+  const fragmentResult = fragment ? redactQueryString(fragment, keep) : { value: "", redactions: 0 };
+  return {
+    value: `${head}${rebuilt}${fragmentResult.value}`,
+    redactions: redactions + fragmentResult.redactions,
+  };
 }
 
 const REDACTED = "[redacted]";
+
+function firstIndexOfAny(value: string, needles: readonly string[]): number {
+  let best = -1;
+  for (const needle of needles) {
+    const at = value.indexOf(needle);
+    if (at !== -1 && (best === -1 || at < best)) {
+      best = at;
+    }
+  }
+  return best;
+}
 
 /**
  * Redact a single GA4 dimension value.

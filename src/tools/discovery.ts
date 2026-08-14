@@ -13,6 +13,11 @@ import type { Ga4Runtime } from "../runtime.js";
  * custom dimension added last week shows up without a plugin update.
  */
 
+/** Table cells must not be able to forge table structure. */
+function cell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+}
+
 function scoreMatch(field: FieldMetadata, needle: string): number {
   const api = (field.apiName ?? "").toLowerCase();
   const ui = (field.uiName ?? "").toLowerCase();
@@ -106,7 +111,7 @@ export function fieldsTool(runtime: Ga4Runtime) {
             }
             const kindCell = flags.length > 0 ? `${entry.kind} (${flags.join(", ")})` : entry.kind;
             const meaning = (entry.field.description ?? "").replace(/\s+/g, " ").slice(0, 140);
-            return `| \`${api}\` | ${entry.field.uiName ?? ""} | ${kindCell} | ${meaning} |`;
+            return `| \`${cell(api)}\` | ${cell(entry.field.uiName ?? "")} | ${kindCell} | ${cell(meaning)} |`;
           }),
         );
       }
@@ -300,7 +305,7 @@ export function diagnoseTool(runtime: Ga4Runtime) {
           "",
           "| Property id | Name | Account |",
           "| --- | --- | --- |",
-          ...properties.map((p) => `| \`${p.id}\` | ${p.name} | ${p.account} |`),
+          ...properties.map((p) => `| \`${cell(p.id)}\` | ${cell(p.name)} | ${cell(p.account)} |`),
         );
       }
 

@@ -37,7 +37,7 @@ names an intent instead of guessing that "pageviews" is spelled `screenPageViews
 openclaw plugins install openclaw-plugin-ga4
 ```
 
-Requires OpenClaw `>=2026.5.17`. Then add a config entry:
+Requires OpenClaw `>=2026.7.1`. Then add a config entry:
 
 ```json
 {
