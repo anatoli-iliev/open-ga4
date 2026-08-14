@@ -11,8 +11,8 @@
  * Dimensions that link a row to a specific identified person. Blocked unless
  * explicitly allowed.
  *
- * The list is deliberately short. The alternative design — prompting for
- * approval on every URL-bearing dimension — was rejected: `pagePath` is in the
+ * The list is deliberately short. The alternative design (prompting for
+ * approval on every URL-bearing dimension) was rejected: `pagePath` is in the
  * single most common question anyone asks ("what are my top pages?"), and a
  * tool that interrupts the most common question is a tool people stop using.
  * Value redaction runs unconditionally on every row of every report instead,
@@ -29,7 +29,7 @@ const USER_IDENTIFYING_PREFIXES = ["customUser:"];
 
 /**
  * Dimensions whose values are visitor-authored, URL-derived, or hand-written
- * by marketers. Not blocked — they are the useful ones — but they are why
+ * by marketers. Not blocked (they are the useful ones), but they are why
  * redaction is on by default and why results are marked as untrusted network
  * content: a stranger can put text in any of them by visiting a URL.
  */
@@ -68,7 +68,7 @@ const FREE_TEXT_EXACT = new Set([
 /**
  * Dimensions Google's own thresholding exists to protect. Allowed, because
  * marketers legitimately report on them, but a report using one always carries
- * the thresholding caveat — small cohorts may be silently withheld.
+ * the thresholding caveat: small cohorts may be silently withheld.
  */
 export const THRESHOLD_PRONE_DIMENSIONS: readonly string[] = [
   "userAgeBracket",
@@ -148,7 +148,7 @@ export function assertDimensionsAllowed(
       `so this plugin does not request ${blocked.length === 1 ? "it" : "them"} by default. ` +
       `To allow ${blocked.length === 1 ? "it" : "them"}, set ` +
       `plugins.entries.ga4.config.privacy.allowUserIdentifyingDimensions to true. ` +
-      `For counts of people, use the totalUsers or activeUsers metric instead — ` +
+      `For counts of people, use the totalUsers or activeUsers metric instead; ` +
       `it answers "how many" without naming anyone.`,
   );
 }
@@ -173,8 +173,8 @@ const NUMERIC_ID = /^\d{6,}$/;
 /**
  * Turn whatever the user pasted into a bare numeric property id.
  *
- * The measurement id (`G-XXXXXXX`) is the string people see most often — it is
- * in the tag on their site — and it is *not* the property id the API wants.
+ * The measurement id (`G-XXXXXXX`) is the string people see most often (it is
+ * in the tag on their site), and it is *not* the property id the API wants.
  * Getting this wrong produces an opaque 403, so it is worth its own message.
  */
 export function normalizePropertyId(input: string): string {
@@ -194,7 +194,7 @@ export function normalizePropertyId(input: string): string {
   if (MEASUREMENT_ID.test(value)) {
     throw new PolicyError(
       `"${value}" is a measurement id, which identifies a data stream rather than a property, ` +
-        `and the reporting API cannot use it. You need the numeric property id — the ~9-digit ` +
+        `and the reporting API cannot use it. You need the numeric property id: the ~9-digit ` +
         `number shown under Admin > Property details, or in the URL as p123456789. ` +
         `Run ga4_diagnose to list yours.`,
     );

@@ -43,7 +43,7 @@ describe("documented JSON", () => {
         try {
           JSON.parse(block.body);
         } catch (error) {
-          broken.push(`${file}:${block.line} — ${error instanceof Error ? error.message : error}`);
+          broken.push(`${file}:${block.line}: ${error instanceof Error ? error.message : error}`);
         }
       }
     }
@@ -72,7 +72,7 @@ describe("documented JSON", () => {
           const problems = [...Value.Errors(configSchema, config)]
             .map((issue) => `${issue.instancePath || "(root)"}: ${issue.message}`)
             .join("; ");
-          rejected.push(`${file}:${block.line} — ${problems}`);
+          rejected.push(`${file}:${block.line}: ${problems}`);
         }
       }
     }

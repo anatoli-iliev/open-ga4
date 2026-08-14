@@ -192,7 +192,7 @@ export const PRESETS: readonly Preset[] = [
     orderBys: byMetric("eventCount"),
     limit: 50,
     note:
-      "On-site search only. These are not Google organic search queries — the GA4 API does not " +
+      "On-site search only. These are not Google organic search queries; the GA4 API does not " +
       "expose those; Search Console does.",
   },
   {

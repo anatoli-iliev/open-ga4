@@ -7,8 +7,8 @@ import type { ServiceAccount } from "./jwt.js";
  * Credential discovery.
  *
  * Deliberately mirrors Google's own Application Default Credentials order so
- * that anyone who already authenticated for another Google tool — or who is
- * migrating from a GA4 skill that used `GOOGLE_APPLICATION_CREDENTIALS` — is
+ * that anyone who already authenticated for another Google tool, or who is
+ * migrating from a GA4 skill that used `GOOGLE_APPLICATION_CREDENTIALS`, is
  * already set up and has nothing to configure.
  */
 

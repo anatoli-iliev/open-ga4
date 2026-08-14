@@ -38,7 +38,7 @@ describe("formatReport", () => {
       dateRangeLabel: "last 7 days",
       redaction,
     });
-    expect(result.markdown).toContain("## Top pages — last 7 days");
+    expect(result.markdown).toContain("## Top pages: last 7 days");
   });
 
   it("groups digits so large numbers stay readable", () => {
@@ -77,7 +77,7 @@ describe("formatReport", () => {
       report({ rows: [{ dimensionValues: [{ value: "/a" }], metricValues: [{}, {}] }] }),
       { title: "t", redaction },
     );
-    expect(result.markdown).toContain("| /a | — | — |");
+    expect(result.markdown).toContain("| /a | - | - |");
   });
 
   it("escapes a pipe in a dimension value so the table cannot be broken", () => {

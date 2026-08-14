@@ -56,7 +56,7 @@ export type RedactionResult = {
 };
 
 /**
- * Ordered so that broader, more structured patterns win over narrower ones —
+ * Ordered so that broader, more structured patterns win over narrower ones:
  * a JWT must be recognised before its base64 segments look like bare tokens.
  */
 const VALUE_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
@@ -121,8 +121,8 @@ function redactQueryString(
   value: string,
   keep: readonly string[],
 ): { value: string; redactions: number } {
-  // A fragment carries key=value pairs just as often as a query string does —
-  // OAuth implicit-flow tokens land there — so both delimiters are treated the
+  // A fragment carries key=value pairs just as often as a query string does
+  // (OAuth implicit-flow tokens land there), so both delimiters are treated the
   // same way.
   const separator = firstIndexOfAny(value, ["?", "#"]);
   if (separator === -1) {
@@ -221,7 +221,7 @@ export function redactValue(value: string, options: RedactionOptions): Redaction
 
 /**
  * Redact credentials out of free text before it reaches a log, an error
- * message, or a tool result. Applied unconditionally — this one is not
+ * message, or a tool result. Applied unconditionally; this one is not
  * configurable, because there is no legitimate reason to surface a key.
  */
 export function redactText(text: string): string {

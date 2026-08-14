@@ -55,8 +55,8 @@ export function buildToolSpecs(runtime: Ga4Runtime): Ga4ToolSpec[] {
 /**
  * Wrap a tool spec in the host's tool contract.
  *
- * `AgentToolResult` has no error channel — it is exactly
- * `{ content, details, progress?, terminate? }` — so a failure is a thrown
+ * `AgentToolResult` has no error channel. It is exactly
+ * `{ content, details, progress?, terminate? }`, so a failure is a thrown
  * error, never a result that looks like data. That is deliberate: it means a
  * result the model receives is always a truthful description of a query that
  * actually ran.

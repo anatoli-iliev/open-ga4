@@ -33,7 +33,7 @@ function formOf(call: [string, RequestInit | undefined]): URLSearchParams {
   return new URLSearchParams(String(call[1]?.body ?? ""));
 }
 
-describe("createTokenProvider — service account", () => {
+describe("createTokenProvider: service account", () => {
   it("exchanges a JWT bearer assertion for an access token", async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 });
@@ -63,7 +63,7 @@ describe("createTokenProvider — service account", () => {
   });
 });
 
-describe("createTokenProvider — gcloud authorized user", () => {
+describe("createTokenProvider: gcloud authorized user", () => {
   it("uses the refresh-token grant", async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
     const provider = createTokenProvider(AUTHORIZED_USER, { fetchImpl, now: () => 1000 });

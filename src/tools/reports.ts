@@ -12,8 +12,8 @@ import type { Ga4Runtime } from "../runtime.js";
 /**
  * The reporting tools: `ga4_report`, `ga4_compare`, `ga4_realtime`, `ga4_query`.
  *
- * They share one pipeline — resolve property, apply renames, check policy,
- * enforce limits, call, format — so a privacy or correctness fix lands in all
+ * They share one pipeline (resolve property, apply renames, check policy,
+ * enforce limits, call, format), so a privacy or correctness fix lands in all
  * of them at once.
  */
 
@@ -37,7 +37,7 @@ const DATE_RANGES = [
 
 function presetMenu(ids: readonly string[]): string {
   return PRESETS.filter((preset) => ids.includes(preset.id))
-    .map((preset) => `  ${preset.id} — ${preset.intent}`)
+    .map((preset) => `  ${preset.id}: ${preset.intent}`)
     .join("\n");
 }
 
@@ -127,7 +127,7 @@ export function reportTool(runtime: Ga4Runtime) {
       "Date ranges always end yesterday, because Google is still processing today's data. " +
       "For live numbers use ga4_realtime instead. For a dimension or metric no report covers, " +
       "use ga4_query. To find out what a property supports, use ga4_fields.",
-    promptSnippet: "ga4_report — Google Analytics reports (traffic, pages, sources, conversions, revenue).",
+    promptSnippet: "ga4_report: Google Analytics reports (traffic, pages, sources, conversions, revenue).",
     parameters: Type.Object({
       report: Type.Union(
         CORE_PRESETS.map((id) => Type.Literal(id)),
@@ -154,7 +154,7 @@ export function reportTool(runtime: Ga4Runtime) {
       filter_contains: Type.Optional(
         Type.String({
           description:
-            "Keep only rows whose first dimension contains this text — for example a URL path " +
+            "Keep only rows whose first dimension contains this text, for example a URL path " +
             "fragment, or a traffic source name.",
         }),
       ),
@@ -240,11 +240,11 @@ export function compareTool(runtime: Ga4Runtime) {
     label: "GA4 period comparison",
     description:
       "Compare one Google Analytics 4 report across two periods and show the change.\n\n" +
-      "Use this when the question is about movement — 'is traffic up', 'did last week beat the " +
+      "Use this when the question is about movement: 'is traffic up', 'did last week beat the " +
       "week before', 'how does this month compare to last'. Returns both periods side by side " +
       "with the absolute and percentage change.\n\n" +
       `Reports available:\n${presetMenu(CORE_PRESETS)}`,
-    promptSnippet: "ga4_compare — compare a Google Analytics report across two periods, with deltas.",
+    promptSnippet: "ga4_compare: compare a Google Analytics report across two periods, with deltas.",
     parameters: Type.Object({
       report: Type.Union(CORE_PRESETS.map((id) => Type.Literal(id))),
       property_id: Type.Optional(Type.String()),
@@ -303,7 +303,7 @@ export function compareTool(runtime: Ga4Runtime) {
 
       return present(response, runtime, {
         tool: "ga4_compare",
-        title: `${preset.intent.replace(/\.$/, "")} — period comparison`,
+        title: `${preset.intent.replace(/\.$/, "")}: period comparison`,
         dateRangeLabel: `${current.label} vs ${previous.label}`,
         notes,
         limit,
@@ -321,9 +321,9 @@ export function realtimeTool(runtime: Ga4Runtime) {
     name: "ga4_realtime",
     label: "GA4 realtime",
     description:
-      "Who is on the site right now, from the Google Analytics 4 realtime API — roughly the last " +
+      "Who is on the site right now, from the Google Analytics 4 realtime API, roughly the last " +
       "30 minutes.\n\n" +
-      "Use this when the question is about the present moment — 'how many people are on the site', " +
+      "Use this when the question is about the present moment: 'how many people are on the site', " +
       "'is anyone reading the launch post', 'did the campaign just go live'. For any question " +
       "about a day or longer, use ga4_report instead.\n\n" +
       "This is the only tool that reports on 'now'. Realtime is a much smaller data set than the " +
@@ -331,7 +331,7 @@ export function realtimeTool(runtime: Ga4Runtime) {
       "breakdown in realtime at all. Its numbers are provisional and are not comparable with " +
       "ga4_report.\n\n" +
       `Breakdowns available:\n${presetMenu(REALTIME_PRESETS)}`,
-    promptSnippet: "ga4_realtime — active users on the site in the last 30 minutes.",
+    promptSnippet: "ga4_realtime: active users on the site in the last 30 minutes.",
     parameters: Type.Object({
       breakdown: Type.Optional(
         Type.Union(REALTIME_PRESETS.map((id) => Type.Literal(id)), {
@@ -393,12 +393,12 @@ export function queryTool(runtime: Ga4Runtime) {
     description:
       "Run a Google Analytics 4 report with dimensions and metrics you choose.\n\n" +
       "Use this only when ga4_report has no preset for what is being asked. It needs exact GA4 " +
-      "API names — run ga4_fields first to find them rather than guessing, because a wrong name " +
+      "API names: run ga4_fields first to find them rather than guessing, because a wrong name " +
       "is a wasted call.\n\n" +
       "Supports filters combined with AND. At most 9 dimensions and 10 metrics. Some combinations " +
       "are impossible because the fields are measured at different scopes; if Google rejects a " +
       "pairing, ga4_fields shows what is compatible.",
-    promptSnippet: "ga4_query — custom Google Analytics report with explicit dimensions and metrics.",
+    promptSnippet: "ga4_query: custom Google Analytics report with explicit dimensions and metrics.",
     parameters: Type.Object({
       metrics: Type.Array(Type.String(), {
         minItems: 1,

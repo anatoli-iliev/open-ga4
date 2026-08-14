@@ -9,7 +9,7 @@ import { Ga4RequestError } from "./limits.js";
  * often; a flat list of conditions combined with AND covers what people
  * actually ask for and can be validated completely before a request is spent.
  *
- * A filter that cannot be built raises. It is never silently dropped — a
+ * A filter that cannot be built raises. It is never silently dropped; a
  * filtered question that quietly returns whole-site numbers is worse than an
  * error, because the number looks right.
  */

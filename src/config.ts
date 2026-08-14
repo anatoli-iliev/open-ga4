@@ -24,7 +24,7 @@ export const configSchema = Type.Object(
     propertyId: Type.Optional(
       Type.String({
         description:
-          "Default GA4 property id — the numeric one, not the G-XXXXXXX measurement id. " +
+          "Default GA4 property id: the numeric one, not the G-XXXXXXX measurement id. " +
           "Tools take a property_id argument that overrides this.",
       }),
     ),

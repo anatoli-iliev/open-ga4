@@ -6,25 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-08-14
+## [0.1.0] - 2026-08-14
 
 First release.
 
 ### Tools
 
-- `ga4_report` — 15 preset reports (overview, daily trend, top pages, landing
+- `ga4_report`: 15 preset reports (overview, daily trend, top pages, landing
   pages, traffic sources, channels, countries, devices, browsers, events, key
   events, ecommerce, sales summary, new vs returning, site search terms), each
   using dimension and metric names verified against Google's published schema.
-- `ga4_compare` — the same reports across two consecutive periods of equal
+- `ga4_compare`: the same reports across two consecutive periods of equal
   length, for questions about change rather than level.
-- `ga4_realtime` — active users in roughly the last 30 minutes, by country,
+- `ga4_realtime`: active users in roughly the last 30 minutes, by country,
   screen or event.
-- `ga4_query` — explicit dimensions, metrics, filters and sort order, for
+- `ga4_query`: explicit dimensions, metrics, filters and sort order, for
   anything the presets do not cover.
-- `ga4_fields` — searches the property's live metadata, so custom dimensions
+- `ga4_fields`: searches the property's live metadata, so custom dimensions
   and metrics defined on that property are found without a plugin update.
-- `ga4_diagnose` — ordered setup checks that stop at the first real failure and
+- `ga4_diagnose`: ordered setup checks that stop at the first real failure and
   name its fix, and a list of every property the credential can read.
 
 ### Privacy and security

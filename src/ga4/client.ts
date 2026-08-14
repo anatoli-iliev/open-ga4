@@ -1,7 +1,7 @@
 import { guardedFetch, type FetchLike } from "./http.js";
 
 /**
- * The Google Analytics REST surface this plugin uses — all of it.
+ * The Google Analytics REST surface this plugin uses, all of it.
  *
  * Five read methods, no writes. Hand-written against the v1beta discovery
  * documents rather than generated from protos, so the whole client is one
@@ -194,7 +194,7 @@ export function createGa4Client(options: Ga4ClientOptions) {
 
     /**
      * Every dimension and metric this property supports, including the custom
-     * ones defined on it. The authoritative field catalog — the plugin ships no
+     * ones defined on it. The authoritative field catalog; the plugin ships no
      * hardcoded list that could go stale against a rename.
      */
     async getMetadata(propertyId: string, signal?: AbortSignal): Promise<MetadataResponse> {

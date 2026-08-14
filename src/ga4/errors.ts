@@ -6,8 +6,8 @@ import { Ga4HttpError } from "./http.js";
  *
  * Two rules hold throughout:
  *
- * 1. Discriminate on machine-readable fields — HTTP status, `error.status`,
- *    and `details[].reason` — never on `error.message` prose, which is
+ * 1. Discriminate on machine-readable fields (HTTP status, `error.status`,
+ *    and `details[].reason`), never on `error.message` prose, which is
  *    unversioned and localized.
  * 2. Build messages from an allowlist of fields. Never serialize the caught
  *    error, which on some paths carries the Authorization header.
@@ -100,8 +100,8 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
         "CLOCK_SKEW",
         `This machine's clock is about ${seconds} seconds ${direction} Google's, which invalidates ` +
           `the signed token used to authenticate. Google reports ${error.serverDate.toISOString()}.`,
-        "Turn on network time sync — `sudo timedatectl set-ntp true` on Linux, or Date & Time > " +
-          "Set automatically on macOS and Windows — then try again. Your Analytics account and " +
+        "Turn on network time sync: `sudo timedatectl set-ntp true` on Linux, or Date & Time > " +
+          "Set automatically on macOS and Windows, then try again. Your Analytics account and " +
           "credentials are fine.",
       );
     }

@@ -27,7 +27,7 @@ jobs:
 
     steps:
       # Actions are pinned by full commit SHA. A tag can be moved; a SHA cannot.
-      # Dependabot proposes updates weekly — see .github/dependabot.yml.
+      # Dependabot proposes updates weekly; see .github/dependabot.yml.
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -44,7 +44,7 @@ jobs:
         run: npm run typecheck
 
       # `pretest` builds first, because src/privacy/surface.test.ts asserts the
-      # privacy guarantees against dist/ — the bundle that actually ships.
+      # privacy guarantees against dist/, the bundle that actually ships.
       - name: Test
         run: npm test
 
@@ -66,5 +66,5 @@ jobs:
 # a push is a foot-gun: one bad merge and a broken build is on the registry
 # forever. Releasing runs from its own workflow, gated on `on: release: types:
 # [published]`, with `permissions: id-token: write` for npm provenance
-# (`npm publish --provenance`) — and it stays unarmed until an NPM_TOKEN secret
+# (`npm publish --provenance`), and it stays unarmed until an NPM_TOKEN secret
 # is deliberately configured on the repository.

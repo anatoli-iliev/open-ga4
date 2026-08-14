@@ -6,8 +6,8 @@ order and it takes about ten minutes.
 
 You will do work in two different Google products. They look related. They are not:
 
-- **Google Cloud Console** — where you create a robot account and switch on two APIs.
-- **Google Analytics** — where you grant that robot account permission to read your data.
+- **Google Cloud Console**: where you create a robot account and switch on two APIs.
+- **Google Analytics**: where you grant that robot account permission to read your data.
 
 Doing one and not the other is the single most common reason this plugin does not work.
 
@@ -21,25 +21,25 @@ You need three things.
 | --- | --- |
 | A **GA4 property** that is collecting data | Open <https://analytics.google.com> and confirm you see reports with numbers in them. |
 | A Google account with **Editor** or **Administrator** on that property | In Analytics, click the gear icon (**Admin**), then **Property access management**. If you can open that screen and see the blue **+** button, you have enough access. If the screen is missing or read-only, ask whoever owns the property to do steps 5 and 6 for you. |
-| Permission to create a **Google Cloud project** | Most personal Google accounts can. Some company-managed accounts cannot. You will find out in step 1 — if the **Create** button is greyed out or you see "Your organisation does not allow this", ask your IT administrator to create a project and give you the Editor role on it. |
+| Permission to create a **Google Cloud project** | Most personal Google accounts can. Some company-managed accounts cannot. You will find out in step 1: if the **Create** button is greyed out or you see "Your organisation does not allow this", ask your IT administrator to create a project and give you the Editor role on it. |
 
 You do not need a credit card. Everything here is free. The Google Analytics Data API has
 no charge, only a usage quota.
 
 ---
 
-## Step 1 — Create a Google Cloud project
+## Step 1. Create a Google Cloud project
 
 1. Open <https://console.cloud.google.com/projectcreate>
 2. In **Project name**, type: `openclaw-ga4`
 3. Look at the grey line just underneath the name box. It reads **Project ID:** followed by
    something like `openclaw-ga4-123456`. **Write that project ID down.** It is usually *not*
-   the same as the project name — Google appends digits when the name is already taken —
+   the same as the project name (Google appends digits when the name is already taken)
    and it is the string that appears in error messages later.
 4. Leave **Location** as it is (`No organisation` is fine).
 5. Click **Create**.
 6. Wait for the notification bell to say the project is ready, then check the **project
-   picker** — the dropdown in the dark bar at the top of the page, immediately right of the
+   picker**, the dropdown in the dark bar at the top of the page, immediately right of the
    Google Cloud logo. It must say **openclaw-ga4**. If it says anything else, click it and
    select `openclaw-ga4`.
 
@@ -48,13 +48,13 @@ different name, you are configuring the wrong project.
 
 ---
 
-## Step 2 — Turn on two APIs
+## Step 2. Turn on two APIs
 
 **These are two separate switches.** Enabling one does not enable the other. There is no
 "Analytics" master switch. People routinely enable the first, get a working report, and are
-then confused when listing properties fails — that is the second switch.
+then confused when listing properties fails; that is the second switch.
 
-### 2a — Google Analytics Data API
+### 2a. Google Analytics Data API
 
 1. Open <https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com>
 2. Check the project picker at the top says **openclaw-ga4**. If it does not, click it and
@@ -65,7 +65,7 @@ then confused when listing properties fails — that is the second switch.
 
 This is the API that runs reports. Without it, nothing works.
 
-### 2b — Google Analytics Admin API
+### 2b. Google Analytics Admin API
 
 1. Open <https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com>
 2. Check the project picker **again**. It resets more often than you would expect.
@@ -73,7 +73,7 @@ This is the API that runs reports. Without it, nothing works.
 4. Wait for **API Enabled**.
 
 This is the API that lists which properties your credential can reach, by name. Reports
-still run without it — but `ga4_diagnose` will report a failure on the property-listing
+still run without it, but `ga4_diagnose` will report a failure on the property-listing
 check, and you will have to type property IDs from memory. Turn it on.
 
 Give both about a minute to propagate before you test. A freshly enabled API sometimes
@@ -81,7 +81,7 @@ returns "not enabled" for the first few requests.
 
 ---
 
-## Step 3 — Create a service account
+## Step 3. Create a service account
 
 A service account is a robot Google account with its own email address. It is what the
 plugin logs in as, so that it never touches your personal Google login.
@@ -107,14 +107,14 @@ You are now back on the service accounts list, with `ga4-reader` in it.
 
 ---
 
-## Step 4 — Create a JSON key and lock the file down
+## Step 4. Create a JSON key and lock the file down
 
 1. On the service accounts list, click the row for
    **`ga4-reader@openclaw-ga4-123456.iam.gserviceaccount.com`**.
 2. Click the **Keys** tab.
 3. Click **Add key** → **Create new key**.
 4. Select **JSON** (it is the default) and click **Create**.
-5. A file downloads — something like `openclaw-ga4-123456-a1b2c3d4e5f6.json`. Google shows a
+5. A file downloads, something like `openclaw-ga4-123456-a1b2c3d4e5f6.json`. Google shows a
    dialog saying the private key was saved to your computer. Click **Close**.
 
 **Treat that file as a password.** Anyone who has it can read your analytics data as this
@@ -152,23 +152,23 @@ icacls "$env:USERPROFILE\.openclaw\credentials\ga4.json" /inheritance:r /grant:r
 
 While you are in the file, open it in a text editor and find the line beginning
 `"client_email":`. That value is the address you copied in step 3. It is what step 5 needs.
-Do not copy anything else out of this file — in particular `private_key` is the secret
+Do not copy anything else out of this file; in particular `private_key` is the secret
 itself.
 
 ---
 
-## Step 5 — Give the service account access **inside Google Analytics**
+## Step 5. Give the service account access **inside Google Analytics**
 
 This is the step everyone gets wrong, so it gets its own explanation.
 
 **Google Cloud access and Google Analytics access are unrelated systems.** They are both
-Google, they both have the word "access", and they share your login — but a permission
+Google, they both have the word "access", and they share your login, but a permission
 granted in one is invisible to the other. Creating the service account in Cloud gives it an
 identity and nothing else. It currently has permission to read exactly zero analytics
 properties. You grant that permission in Google Analytics, by hand, once per property.
 
 Skipping this step produces a `403` from Google that says only "user does not have
-sufficient permissions" — with no hint about which user, which property, or where to fix it.
+sufficient permissions", with no hint about which user, which property, or where to fix it.
 
 1. Copy the service account address. It is in your key file as `client_email`, and on the
    service account page in Cloud:
@@ -176,7 +176,7 @@ sufficient permissions" — with no hint about which user, which property, or wh
 2. Open <https://analytics.google.com>
 3. Click the **gear icon** at the bottom of the left-hand sidebar. It is labelled **Admin**.
 4. Make sure the **Property** selector at the top of the Admin page shows the property you
-   want the agent to read. If you have several, this matters — the grant is per property.
+   want the agent to read. If you have several, this matters: the grant is per property.
 5. In the **Property** column, click **Property access management**. (In the newer Admin
    layout the same link sits under **Property settings** in the left-hand list.)
 6. Click the blue **+** button at the top right, then **Add users**.
@@ -194,7 +194,7 @@ for every property you want the agent to be able to read.
 
 ---
 
-## Step 6 — Find your property ID
+## Step 6. Find your property ID
 
 1. Still in **Admin**, in the **Property** column, click **Property details** (older
    interfaces label this **Property Settings**).
@@ -212,10 +212,10 @@ returning an unexplained error.
 
 ---
 
-## Step 7 — Point the plugin at the key
+## Step 7. Point the plugin at the key
 
-Open your OpenClaw config file — `~/.openclaw/openclaw.json`, unless you have moved it with
-`OPENCLAW_CONFIG_DIR` — and add this block, substituting your own property ID:
+Open your OpenClaw config file (`~/.openclaw/openclaw.json`, unless you have moved it with
+`OPENCLAW_CONFIG_DIR`) and add this block, substituting your own property ID:
 
 ```json
 {
@@ -241,8 +241,8 @@ overrides it, so one config entry is enough even if you report on several proper
 
 ### Alternative: the `GOOGLE_APPLICATION_CREDENTIALS` environment variable
 
-If you would rather not put a path in the config file — or you are migrating from another
-GA4 tool that already sets this variable — you can leave `credentials` out entirely and set
+If you would rather not put a path in the config file, or you are migrating from another
+GA4 tool that already sets this variable, you can leave `credentials` out entirely and set
 the standard Google environment variable instead:
 
 ```bash
@@ -250,7 +250,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/.openclaw/credentials/ga4.json
 ```
 
 Put that line in your shell profile (`~/.bashrc`, `~/.zshrc`) so it survives a reboot, and
-make sure it is set in the environment OpenClaw itself runs in — a variable exported in a
+make sure it is set in the environment OpenClaw itself runs in; a variable exported in a
 terminal is not visible to an app launched from a desktop icon.
 
 ### Where the plugin looks, in order
@@ -259,9 +259,9 @@ The first source that yields a usable credential wins. Later sources are not con
 
 | Order | Source |
 | --- | --- |
-| 1 | `plugins.entries.ga4.config.credentials` — the path in your OpenClaw config |
-| 2 | `GOOGLE_APPLICATION_CREDENTIALS` — the environment variable |
-| 3 | `~/.config/gcloud/application_default_credentials.json` — whatever `gcloud auth application-default login` last wrote |
+| 1 | `plugins.entries.ga4.config.credentials`: the path in your OpenClaw config |
+| 2 | `GOOGLE_APPLICATION_CREDENTIALS`: the environment variable |
+| 3 | `~/.config/gcloud/application_default_credentials.json`: whatever `gcloud auth application-default login` last wrote |
 
 A consequence worth knowing: if `GOOGLE_APPLICATION_CREDENTIALS` is set to a stale path, the
 plugin will not fall through to your gcloud credentials. It uses source 2 and fails there.
@@ -270,18 +270,18 @@ visible rather than mysterious.
 
 ---
 
-## Step 8 — Verify
+## Step 8. Verify
 
-Restart OpenClaw so it picks up the config, then ask the agent to run the diagnostic — "run
+Restart OpenClaw so it picks up the config, then ask the agent to run the diagnostic: "run
 ga4_diagnose" is enough. A healthy setup looks like this:
 
 ```
 ## GA4 setup check
 
-- **PASS** Google credentials — loaded from plugin config (credentials), service account ga4-reader@openclaw-ga4-123456.iam.gserviceaccount.com
-- **PASS** Admin API and property access — 2 properties reachable
-- **PASS** Data API report — property 123456789 returned 12480 active users over the last 7 days
-- **PASS** Privacy settings — redaction on; user-identifying dimensions blocked; property allowlist not set
+- **PASS** Google credentials: loaded from plugin config (credentials), service account ga4-reader@openclaw-ga4-123456.iam.gserviceaccount.com
+- **PASS** Admin API and property access: 2 properties reachable
+- **PASS** Data API report: property 123456789 returned 12480 active users over the last 7 days
+- **PASS** Privacy settings: redaction on; user-identifying dimensions blocked; property allowlist not set
 
 **Properties this credential can read**
 
@@ -293,21 +293,21 @@ ga4_diagnose" is enough. A healthy setup looks like this:
 
 Read it line by line:
 
-- **Google credentials** — the key file was found, parsed, and Google accepted it. The
+- **Google credentials**: the key file was found, parsed, and Google accepted it. The
   address shown is the one that needs Viewer access in Analytics. If it is not the address
   you pasted in step 5, that is your bug.
-- **Admin API and property access** — the Admin API is on, and this is the full list of
+- **Admin API and property access**: the Admin API is on, and this is the full list of
   properties this credential can read. A property missing from the table did not get step 5.
-- **Data API report** — a real report ran against a real property. This is the only check
+- **Data API report**: a real report ran against a real property. This is the only check
   that proves reporting works end to end.
-- **Privacy settings** — redaction is on and person-identifying dimensions are blocked.
+- **Privacy settings**: redaction is on and person-identifying dimensions are blocked.
   These are the defaults; the line exists so the posture is visible rather than assumed.
 
 Checks run in dependency order and the run stops at the first thing that is genuinely
 blocking, so you get one fix to apply rather than a cascade of downstream noise. Each
 failure prints a **Fix:** line under it naming the exact next action.
 
-Then ask a real question — "what were my top pages last month?" — and confirm you get a
+Then ask a real question ("what were my top pages last month?") and confirm you get a
 table with numbers in it.
 
 ---
@@ -317,20 +317,20 @@ table with numbers in it.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `403` mentioning **`SERVICE_DISABLED`**, or the message "The Google Analytics Data API is not enabled in project *X*" | Step 2a was skipped, or was done while the project picker was pointing at a different project. | Open <https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com>, confirm the project picker shows the project named in the error, click **Enable**, wait a minute, retry. |
-| The same error but naming **`analyticsadmin.googleapis.com`**, or `ga4_diagnose` failing only on "Admin API and property access" | Step 2b was skipped. Enabling the Data API does not enable the Admin API — they are two separate switches. | Open <https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com> and click **Enable**. Reports work meanwhile; pass a numeric property ID directly. |
-| `403` **without** `SERVICE_DISABLED` — "cannot read property 123456789" | Step 5 was skipped, or was done on a different property, or the address pasted into Analytics does not match the key file's `client_email`. This is the most common failure by a wide margin. | In Analytics: **Admin → Property access management → + → Add users**, paste the `client_email` from your key file, untick the email notification, select **Viewer**, click **Add**. Then re-run `ga4_diagnose` and check the address it prints matches character for character. |
+| The same error but naming **`analyticsadmin.googleapis.com`**, or `ga4_diagnose` failing only on "Admin API and property access" | Step 2b was skipped. Enabling the Data API does not enable the Admin API; they are two separate switches. | Open <https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com> and click **Enable**. Reports work meanwhile; pass a numeric property ID directly. |
+| `403` **without** `SERVICE_DISABLED`, "cannot read property 123456789" | Step 5 was skipped, or was done on a different property, or the address pasted into Analytics does not match the key file's `client_email`. This is the most common failure by a wide margin. | In Analytics: **Admin → Property access management → + → Add users**, paste the `client_email` from your key file, untick the email notification, select **Viewer**, click **Add**. Then re-run `ga4_diagnose` and check the address it prints matches character for character. |
 | `403` on one property while others work | Access is granted per property. The others got step 5; this one did not. | Repeat step 5 on that property. Or grant at the account level if you genuinely want the agent to read everything under the account. |
-| `404` / `NOT_FOUND` — "Google Analytics has no property with id *N*" | The number is not a property that exists. Usually a typo, a digit dropped, or a number copied from a different Google product. | Run `ga4_diagnose` and use a property ID from the table it prints. Or re-read it from **Admin → Property details**. |
+| `404` / `NOT_FOUND`, "Google Analytics has no property with id *N*" | The number is not a property that exists. Usually a typo, a digit dropped, or a number copied from a different Google product. | Run `ga4_diagnose` and use a property ID from the table it prints. Or re-read it from **Admin → Property details**. |
 | "*G-XXXXXXXXXX* is a measurement id, which identifies a data stream rather than a property" | You used the measurement ID from your website's tracking tag. It is the string most people have to hand, and the reporting API cannot use it. | Get the numeric property ID from **Admin → Property details**, top right, 9–10 digits. Put that in `propertyId`. |
-| "*UA-12345-1* is not a GA4 property id. Expected a numeric id such as 123456789" | That is a Universal Analytics property ID. Universal Analytics was shut down and its API no longer exists. | There is no fix for a UA property — the data is not reachable through any current API. You need a GA4 property. If you have one, its ID is under **Admin → Property details**. |
+| "*UA-12345-1* is not a GA4 property id. Expected a numeric id such as 123456789" | That is a Universal Analytics property ID. Universal Analytics was shut down and its API no longer exists. | There is no fix for a UA property; the data is not reachable through any current API. You need a GA4 property. If you have one, its ID is under **Admin → Property details**. |
 | `invalid_grant`, or "This machine's clock is about *N* seconds behind Google's" | Authentication is a token this machine signs with a timestamp inside it. If the clock has drifted more than about a minute, Google rejects every signature. It looks exactly like a bad key, and people regenerate perfectly good keys over it. | Turn on network time sync: `sudo timedatectl set-ntp true` on Linux, **Date & Time → Set automatically** on macOS and Windows. Your key and your Analytics access are fine. |
-| "Google Analytics has run out of API quota for this property" (`429`) | GA4's API quota is per property and is **shared** — the GA4 web interface, Looker Studio, exports and every other API client draw from the same pool. Long date ranges, many dimensions and large row limits each cost more. | Daily allowances reset at midnight US Pacific; hourly ones reset within the hour. Meanwhile ask for fewer dimensions, shorter ranges and smaller row limits. If it recurs daily, something else on your account is consuming the quota. |
-| A report comes back with no rows, and no error | Almost always the date range predates the property. GA4 has no data before the day collection started, and asking for "last year" on a property created in March returns an empty, entirely correct answer. | Ask for a range you know has data — "last 7 days" — and work backwards. Check when the property started collecting under **Admin → Property details**. Also check you are pointed at the production property and not a staging one. |
+| "Google Analytics has run out of API quota for this property" (`429`) | GA4's API quota is per property and is **shared**: the GA4 web interface, Looker Studio, exports and every other API client draw from the same pool. Long date ranges, many dimensions and large row limits each cost more. | Daily allowances reset at midnight US Pacific; hourly ones reset within the hour. Meanwhile ask for fewer dimensions, shorter ranges and smaller row limits. If it recurs daily, something else on your account is consuming the quota. |
+| A report comes back with no rows, and no error | Almost always the date range predates the property. GA4 has no data before the day collection started, and asking for "last year" on a property created in March returns an empty, entirely correct answer. | Ask for a range you know has data ("last 7 days") and work backwards. Check when the property started collecting under **Admin → Property details**. Also check you are pointed at the production property and not a staging one. |
 | A report comes back with no rows, and "last 7 days" also returns nothing | The property is not receiving events at all: the tag was removed, the site moved, or this is a property that was created but never wired up. | Open the Realtime report in <https://analytics.google.com> and load your own site in another tab. If Realtime stays empty, the problem is the tracking tag on your site, not this plugin. |
-| "The request reached Google without a usable credential", or the credentials check fails outright | No credential source resolved: the path in config does not exist, `GOOGLE_APPLICATION_CREDENTIALS` points somewhere stale, or the file is not readable by the user OpenClaw runs as. | Run `ga4_diagnose` — it lists every location it checked and what it found in each. Then fix the path, or re-do step 4. |
-| "service-account file is missing client_email or private_key" | The file at that path is JSON but is not a Google service-account key — commonly an OAuth *client* secret downloaded from the Credentials page instead of a key from the service account's **Keys** tab. | Redo step 4: <https://console.cloud.google.com/iam-admin/serviceaccounts> → click `ga4-reader` → **Keys** → **Add key** → **Create new key** → **JSON**. |
+| "The request reached Google without a usable credential", or the credentials check fails outright | No credential source resolved: the path in config does not exist, `GOOGLE_APPLICATION_CREDENTIALS` points somewhere stale, or the file is not readable by the user OpenClaw runs as. | Run `ga4_diagnose`: it lists every location it checked and what it found in each. Then fix the path, or re-do step 4. |
+| "service-account file is missing client_email or private_key" | The file at that path is JSON but is not a Google service-account key, commonly an OAuth *client* secret downloaded from the Credentials page instead of a key from the service account's **Keys** tab. | Redo step 4: <https://console.cloud.google.com/iam-admin/serviceaccounts> → click `ga4-reader` → **Keys** → **Add key** → **Create new key** → **JSON**. |
 | "Google rejected the credential" after it previously worked | The key was deleted or the service account was disabled in Google Cloud. Tokens refresh automatically, so this is not an expiry. | Create a fresh JSON key (step 4) and point `credentials` at it. Delete the old key in the console while you are there. |
-| `ga4_diagnose` shows **FAIL** on Privacy settings — "redaction is turned OFF" | `privacy.redact` was set to `false` in config. | Remove `plugins.entries.ga4.config.privacy.redact`, or set it to `true`. |
+| `ga4_diagnose` shows **FAIL** on Privacy settings, "redaction is turned OFF" | `privacy.redact` was set to `false` in config. | Remove `plugins.entries.ga4.config.privacy.redact`, or set it to `true`. |
 
 ---
 
@@ -350,7 +350,7 @@ gcloud auth application-default set-quota-project openclaw-ga4-123456
 What each part is doing:
 
 - **`--scopes` is required here.** Without it, `gcloud auth application-default login` grants
-  gcloud's default scope set, which covers Cloud Platform but not Analytics — and GA4
+  gcloud's default scope set, which covers Cloud Platform but not Analytics, and GA4
   rejects the resulting token as insufficiently scoped. Naming `analytics.readonly`
   explicitly is what makes the credential able to read Analytics, and read is all it can do.
 - **`cloud-platform` is in that list only so the second command works.**
@@ -359,7 +359,7 @@ What each part is doing:
   and later calls can fail with a confusing "API not enabled" or quota error. You can either
   include the scope as above, or omit it and add the line `"quota_project_id":
   "openclaw-ga4-123456"` to `~/.config/gcloud/application_default_credentials.json` by hand.
-- **The quota project must have the Data API enabled** — step 2a still applies. The quota
+- **The quota project must have the Data API enabled**: step 2a still applies. The quota
   project is the project whose quota and API enablement your requests are billed against.
   This is the trap: your personal account may have perfectly good Analytics access while the
   project attached to your ADC file has never had `analyticsdata.googleapis.com` switched on.
@@ -367,14 +367,14 @@ What each part is doing:
 Two honest trade-offs before you choose this path:
 
 1. **This credential is you.** It inherits your own Analytics access, which is why step 5 is
-   unnecessary — and it means the agent reads everything you can read, not a scoped subset.
+   unnecessary, and it means the agent reads everything you can read, not a scoped subset.
    A service account with Viewer on one property is the tighter grant.
 2. **It expires.** ADC refresh tokens are revoked when you change your password, when an
    administrator resets sessions, and on their own schedule under some Workspace policies.
    A service account key does not. For anything that runs unattended, use the service
    account.
 
-If both a service-account path and ADC are present, the service-account path wins — see the
+If both a service-account path and ADC are present, the service-account path wins; see the
 resolution order in step 7.
 
 ---
@@ -385,8 +385,8 @@ Run `ga4_diagnose` and read the **Fix:** line under the first `FAIL`. The checks
 dependency order, so the first failure is the real one; everything after it is a consequence.
 
 If the fix line does not resolve it, open an issue with the `ga4_diagnose` output. It never
-prints key material — credentials are reported as present or absent, by source, and never by
-content — so it is safe to paste.
+prints key material (credentials are reported as present or absent, by source, and never by
+content), so it is safe to paste.
 
 ---
 

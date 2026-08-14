@@ -9,17 +9,17 @@ against, how the defence is enforced, and where it stops.
 | Version | Supported | Notes |
 | --- | --- | --- |
 | 0.1.x | Yes | Current line. Security fixes ship as a patch release. |
-| < 0.1.0 | — | No earlier releases exist. |
+| < 0.1.0 | - | No earlier releases exist. |
 
 Fixes land on the newest patch of a supported line. There are no backports to older
-patches — upgrade instead.
+patches; upgrade instead.
 
 ## Reporting a vulnerability
 
 Use either channel. Both reach the same person.
 
 - **Email** anatoli@helphabit.com, with `openclaw-plugin-ga4` in the subject.
-- **GitHub private security advisory** —
+- **GitHub private security advisory**:
   <https://github.com/anatoli-iliev/openclaw-plugin-ga4/security/advisories/new>
 
 Please do not open a public issue, discussion, or pull request for a vulnerability.
@@ -67,7 +67,7 @@ the key is revoked. The same is true of the `authorized_user` file that
   `client_secret`, `api_key` and `apiKey`. It runs unconditionally in `guardedFetch`
   (`src/ga4/http.ts`) and in the error mapper (`src/ga4/errors.ts`). There is no
   config switch, because there is no legitimate reason to surface a key.
-- `ga4_diagnose` reports where a credential was found and whether it parsed — a label,
+- `ga4_diagnose` reports where a credential was found and whether it parsed: a label,
   a path, and a status. It never prints the contents.
 - The private key never leaves the process. `node:crypto` `createSign("RSA-SHA256")`
   signs the OAuth assertion locally; the signature goes to Google, the key does not.
@@ -77,7 +77,7 @@ the key is revoked. The same is true of the `authorized_user` file that
 
 **Your part.** `chmod 600` the key file. Keep it out of the repository, out of any
 synced or backed-up folder, and out of your shell history. Delete the key in Google
-Cloud when you stop using it — revocation is instant and free.
+Cloud when you stop using it; revocation is instant and free.
 
 **What it does not do.** File permissions are the operating system's job. Anything
 running as your user can read your key, with or without this plugin.
@@ -105,7 +105,7 @@ reasons. An agent that reads those values turns that into a prompt-injection cha
   `ResponseMetaData`, never from row content, so injected text cannot impersonate a
   date range or a warning.
 - Redaction runs on every value of every row of a report before the model sees it
-  (`src/privacy/redact.ts`) — unless you set `privacy.redact` to `false`, which turns
+  (`src/privacy/redact.ts`), unless you set `privacy.redact` to `false`, which turns
   it off entirely and which `ga4_diagnose` reports as a FAIL. `ga4_fields` and
   `ga4_diagnose` return field and property names rather than measurements, and are not
   redacted.
@@ -121,7 +121,7 @@ reasons. An agent that reads those values turns that into a prompt-injection cha
 
 **What it does not do.** None of this stops a model from acting on text it read. It
 reduces the risk; it does not eliminate it, and nothing does. If you wire an agent to
-act on GA4 data — send email, file tickets, change bids — keep a human in that loop.
+act on GA4 data (send email, file tickets, change bids), keep a human in that loop.
 The numbers are trustworthy. The strings are not.
 
 **In scope for a report:** a dimension value that escapes the fenced block, forges a
@@ -155,8 +155,8 @@ network path is a morning's reading.
 
 ### 4. SSRF and egress to an attacker-controlled host
 
-**The risk.** A URL that reaches an HTTP client from data — a property id, a field
-name, a `help.links[].url` inside a Google error payload — is a route out of the
+**The risk.** A URL that reaches an HTTP client from data (a property id, a field
+name, a `help.links[].url` inside a Google error payload) is a route out of the
 machine, carrying a bearer token in the header.
 
 **What the plugin does.** `assertAllowedUrl` in `src/ga4/http.ts` runs before every
@@ -167,7 +167,7 @@ request, and `guardedFetch` is the only way out. The check is exact-match on
 | --- | --- |
 | `oauth2.googleapis.com` | Exchange a credential for a one-hour access token |
 | `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata`, `checkCompatibility` |
-| `analyticsadmin.googleapis.com` | `accountSummaries` — the property list `ga4_diagnose` prints |
+| `analyticsadmin.googleapis.com` | `accountSummaries`, the property list `ga4_diagnose` prints |
 
 Nothing else, ever. Adding a host is a visible, reviewable diff in one constant.
 
@@ -195,7 +195,7 @@ listed console link shown to a human.
 **What it does not do.** The plugin uses the `fetch` it is given. If OpenClaw is
 configured with an HTTP proxy, or your machine has a TLS-intercepting middlebox, this
 traffic traverses it exactly as all other OpenClaw traffic does. The allowlist
-constrains which host the plugin asks for — not what your OS and your OpenClaw
+constrains which host the plugin asks for, not what your OS and your OpenClaw
 configuration then do with the request.
 
 ### 5. Over-broad Google permissions
@@ -214,7 +214,7 @@ access instead of property-level, or a Cloud IAM role nobody understands.
   `checkCompatibility`, `listAccountSummaries`. There is no generated SDK in which an
   update could quietly introduce `deleteProperty`.
 - **It never calls `properties.audienceExports`, `properties.audienceLists`, or the
-  Admin API's `runAccessReport`** — the three surfaces built to hand back rows keyed to
+  Admin API's `runAccessReport`**, the three surfaces built to hand back rows keyed to
   an individual visitor rather than aggregates. `src/privacy/surface.test.ts` walks
   every `.js` file in `dist/` and asserts those strings are absent from the built
   bundle. That test is the whole claim, and it is deliberately narrower than "it cannot
@@ -229,7 +229,7 @@ access instead of property-level, or a Cloud IAM role nobody understands.
 
 **What it does not do.** Scope is a ceiling, not a floor. If you grant the service
 account access to your whole Analytics account, the read-only scope still prevents
-writes — but everything in that account becomes readable. Grant Viewer, on the
+writes, but everything in that account becomes readable. Grant Viewer, on the
 properties you actually want read, and nothing more.
 
 ### 6. Supply-chain tampering of the published package
@@ -247,17 +247,17 @@ a moved Git tag silently changes what the release pipeline runs.
   secrets are used, because tests need no credentials and no network.
 - **A small tarball.** `files` in `package.json` limits the published package to
   `dist`, `openclaw.plugin.json`, `README.md`, `PRIVACY.md`, `SECURITY.md`, `LICENSE`
-  and `CHANGELOG.md` — the code, plus the documents that should travel with it. No key
+  and `CHANGELOG.md`: the code, plus the documents that should travel with it. No key
   files, no `.env`, no `.sandbox`. `npm pack --dry-run` shows exactly what ships.
 
 **Provenance: intended, not yet in place.** No release has been published to npm, and
-this repository intentionally contains **no publish workflow** — a publish job that can
+this repository intentionally contains **no publish workflow**; a publish job that can
 fire on a push is a foot-gun, and the comment at the end of `ci.yml` says so. When one
 lands it will be gated on a `release` event and run `npm publish --provenance` under the
 workflow's OIDC identity, so npm records the repository, workflow and commit that
 produced the tarball and `npm audit signatures` can check it; it stays unarmed until an
 `NPM_TOKEN` is deliberately configured. None of that exists today, so there is nothing
-to verify — treat any package published under this name before the first tagged release
+to verify: treat any package published under this name before the first tagged release
 as not from here.
 
 ## What is out of scope
@@ -272,7 +272,7 @@ reports about them will be closed with a pointer back here.
   on a response that has already left Google and arrived in full. It has no say in what
   your provider does with a report afterwards. Redaction reduces what is in those
   rows. It does not keep them off the wire. If your threat model excludes your model
-  provider, no plugin can change that calculus — choose the property, the date range
+  provider, no plugin can change that calculus: choose the property, the date range
   and the provider accordingly.
 - **Google's own data handling.** What Google collects, retains, samples, thresholds
   or infers about your visitors is between you and Google, and is unchanged by

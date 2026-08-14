@@ -51,7 +51,7 @@ export type GuardedFetchOptions = {
   /** Form-encoded body. Google's token endpoint does not accept JSON. */
   form?: Record<string, string>;
   signal?: AbortSignal;
-  /** Extra headers. Never used for credentials — those go through accessToken. */
+  /** Extra headers. Never used for credentials; those go through accessToken. */
   headers?: Record<string, string>;
   fetchImpl?: FetchLike;
   timeoutMs?: number;

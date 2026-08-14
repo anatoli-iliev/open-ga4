@@ -4,7 +4,7 @@ Read-only Google Analytics 4 reporting for an OpenClaw agent, running on your ow
 
 **GA4 Analytics** adds six tools to OpenClaw so an agent can answer questions about a GA4
 property: what the top pages were last month, where traffic came from, what changed since
-last year, who is on the site right now. It calls Google's REST API directly — no gateway,
+last year, who is on the site right now. It calls Google's REST API directly: no gateway,
 no vendor account, no Python. It is for people who run OpenClaw locally, and who would
 rather read a plugin's whole network surface than trust a description of it. That surface
 is one runtime dependency, three allowed hosts, and one OAuth scope.
@@ -13,7 +13,7 @@ is one runtime dependency, three allowed hosts, and one OAuth scope.
 
 | Tool | What it returns |
 | --- | --- |
-| `ga4_report` | One preset report — top pages, traffic sources, channels, countries, devices, events, ecommerce and more — as a markdown table. |
+| `ga4_report` | One preset report (top pages, traffic sources, channels, countries, devices, events, ecommerce and more) as a markdown table. |
 | `ga4_compare` | Two named periods side by side, with the change between them. |
 | `ga4_realtime` | Active users in the last 30 minutes. The only tool that sees today. |
 | `ga4_fields` | Searches the property's live dimension and metric catalog and returns exact API names. |
@@ -63,30 +63,30 @@ Requires OpenClaw `>=2026.7.1`. Then add a config entry:
 ```
 
 `credentials` is optional. Without it the plugin looks at `GOOGLE_APPLICATION_CREDENTIALS`,
-then at `~/.config/gcloud/application_default_credentials.json`, in that order — so if you
+then at `~/.config/gcloud/application_default_credentials.json`, in that order, so if you
 already authenticated for another Google tool, you are already set up.
 
 ## Setup
 
-Five steps here, eight in the click-by-click version — about ten minutes.
+Five steps here, eight in the click-by-click version, about ten minutes.
 [SETUP.md](SETUP.md) has it with console links.
 
 1. **Create a Google Cloud project** and enable the Google Analytics Data API. Enable the
    Admin API too if you want `ga4_diagnose` to list your properties by name; reports work
    without it.
 2. **Create a service account.** Skip the "grant this service account access to project"
-   step — a Cloud IAM role does nothing for GA4 access.
+   step; a Cloud IAM role does nothing for GA4 access.
 3. **Download a JSON key**, move it somewhere private, and `chmod 600` it. That file is a
    password.
 4. **Grant the service account read access in Google Analytics.** This is the step
-   everyone gets wrong. Copy the `client_email` from the key file — it looks like
-   `something@project.iam.gserviceaccount.com` — then open Google Analytics, go to
+   everyone gets wrong. Copy the `client_email` from the key file (it looks like
+   `something@project.iam.gserviceaccount.com`), then open Google Analytics, go to
    **Admin > Property access management**, click **+ > Add users**, paste that address,
    untick "Notify new users by email", and give it **Viewer** and nothing else. Access is
    granted here, inside Analytics, not in Google Cloud. Skipping this produces a 403 that
    says nothing useful; `ga4_diagnose` translates it.
 5. **Point the plugin at the key and the property id**, then run `ga4_diagnose`. The
-   property id is the 9–10 digit number under **Admin > Property details** — not the
+   property id is the 9–10 digit number under **Admin > Property details**, not the
    `G-XXXXXXXXXX` measurement ID from your site's tag. Paste the measurement ID and the
    plugin will tell you which number you actually need.
 
@@ -113,7 +113,7 @@ Five steps here, eight in the click-by-click version — about ten minutes.
   `https://www.googleapis.com/auth/analytics.readonly`, and a test asserts no other
   `googleapis.com/auth/` string exists in the shipped bundle.
 - **No telemetry, and no report data on disk.** No phone-home, no update check, no usage
-  counter. Tokens are held in memory only — a cached Google access token in a file is a
+  counter. Tokens are held in memory only; a cached Google access token in a file is a
   credential at rest that you did not agree to.
 - **Errors that name the fix.** A missing property grant becomes "add this address in
   Admin > Property access management with the Viewer role". A disabled API becomes the
@@ -128,7 +128,7 @@ Verified comparisons, each backed by a fetched artifact:
 
 | Project | Verified fact | Here instead |
 | --- | --- | --- |
-| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request — a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this plugin cannot honour raises an error naming why, rather than being dropped — asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
+| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request; a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this plugin cannot honour raises an error naming why, rather than being dropped: asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
 | [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | `skills/ga4/SKILL.md` declares `requires: {"bins": ["python3"]}` and every example runs `python3 scripts/ga4_query.py`. Those scripts tell you to `pip install google-analytics-data google-auth-oauthlib` on the host. | A TypeScript plugin that runs in the OpenClaw process. No Python, no `pip`, no shell tool. |
 
 ## Analytics data is untrusted input
@@ -154,7 +154,7 @@ This plugin does two things about it:
    plain table without that fence.
 
 This reduces risk. It does not eliminate prompt injection, and nothing does. If you wire an
-agent to act on GA4 data — send email, file tickets, change bids — keep a human in that
+agent to act on GA4 data (send email, file tickets, change bids), keep a human in that
 loop. The numbers are trustworthy. The strings are not.
 
 ## Privacy
@@ -167,8 +167,8 @@ Full detail in [PRIVACY.md](PRIVACY.md). The short version:
   a keep-list. The report says how many values were masked.
 - `userId` and user-scoped custom dimensions are refused unless you explicitly opt in.
 - The plugin never calls `properties.audienceExports`, `properties.audienceLists` or the
-  Admin API's `runAccessReport` — the three surfaces built to hand back rows keyed to an
-  individual visitor — and a test asserts those strings are absent from the built bundle.
+  Admin API's `runAccessReport`, the three surfaces built to hand back rows keyed to an
+  individual visitor, and a test asserts those strings are absent from the built bundle.
   That is narrower than "cannot read per-user data": `runReport` returns per-person rows as
   soon as the `userId` dimension is used, which is why that dimension is blocked by default.
 - **What this does not protect you from:** report data returned to the agent is seen by
@@ -188,7 +188,7 @@ npm run typecheck
 ```
 
 `npm test` builds first, because `src/privacy/surface.test.ts` asserts the privacy
-guarantees against `dist/` — the bundle that actually ships — rather than against the
+guarantees against `dist/` (the bundle that actually ships) rather than against the
 source. `src/docs.test.ts` checks this file: every configuration example here is validated
 against the real config schema, and every `ga4_` tool name, npm script and Google host
 mentioned in the documentation must exist.

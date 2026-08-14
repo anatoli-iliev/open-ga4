@@ -28,7 +28,7 @@ describe("createAuditLogger", () => {
     });
   });
 
-  it("records the question — fields, range and a row count", async () => {
+  it("records the question: fields, range and a row count", async () => {
     const { logger, lines } = capture();
     await logger.record({
       tool: "ga4_query",

@@ -21,7 +21,7 @@ Node 22 or newer. The HTTP layer uses `AbortSignal.any` and `AbortSignal.timeout
 package is native ESM throughout.
 
 There is exactly one runtime dependency: `typebox`. That is a headline claim in the README
-and in `docs/DESIGN.md`, so adding a second one is a design change, not a chore — open an
+and in `docs/DESIGN.md`, so adding a second one is a design change, not a chore; open an
 issue first. Authentication is implemented on `node:crypto` and the GA4 REST API is called
 with `fetch`; both stay that way.
 
@@ -37,15 +37,15 @@ npm test              # vitest run
 ```
 
 **`npm test` builds first.** `pretest` runs `npm run build`, because
-`src/privacy/surface.test.ts` asserts against `dist/` — the built artifact that actually
-ships — not against the source. Invoking `vitest` directly bypasses that and reads whatever
+`src/privacy/surface.test.ts` asserts against `dist/` (the built artifact that actually
+ships), not against the source. Invoking `vitest` directly bypasses that and reads whatever
 `dist/` happened to contain last, which means it can pass on code you have already deleted
 and fail on code you have already fixed. Prefer `npm test`.
 
 No test needs network access and no test needs credentials. If you find yourself wanting
 either, you are writing an integration test; record the response as a fixture instead. A
 live read-only smoke test against a real property is a manual step, run by hand, and never
-part of the suite — CI has no credentials and must never need any.
+part of the suite; CI has no credentials and must never need any.
 
 Commit messages that change the suite carry the test count as their last line. Take it from
 the vitest summary of the run you actually did.
@@ -67,7 +67,7 @@ If you do run the OpenClaw CLI against this repo for any other reason, use the w
 
 `openclaw plugins build` and `openclaw plugins validate` boot enough of the host runtime to
 run config doctor and state migrations. Against a real installation, that can rewrite your
-`openclaw.json` and relocate your state files — while you are debugging a plugin, which is
+`openclaw.json` and relocate your state files, while you are debugging a plugin, which is
 the worst possible moment to discover it.
 
 `scripts/openclaw-sandbox.sh` redirects `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`,
@@ -84,14 +84,14 @@ once" run the bare CLI.
 ## Every privacy claim needs a test
 
 This is the rule the project exists to demonstrate. `README.md` and `PRIVACY.md` make
-specific negative claims — that the plugin does not do certain things. A negative claim in a
+specific negative claims: that the plugin does not do certain things. A negative claim in a
 README is worth nothing on its own. Each one is checked against the built bundle.
 
 | Claim | Where it is enforced | Where it is asserted |
 | --- | --- | --- |
 | Contacts only `oauth2.googleapis.com`, `analyticsdata.googleapis.com`, `analyticsadmin.googleapis.com` | `ALLOWED_HOSTS` + `assertAllowedUrl` in `src/ga4/http.ts`, checked before any request is issued | `src/ga4/http.test.ts`, and a scan of `dist/` in `src/privacy/surface.test.ts` |
 | Requests no OAuth scope but `analytics.readonly` | the scope constant is the only one in the codebase | `src/privacy/surface.test.ts` |
-| Never calls `properties.audienceExports`, `properties.audienceLists` or the Admin API's `runAccessReport` — the three surfaces built to return rows keyed to an individual visitor | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `dist/` |
+| Never calls `properties.audienceExports`, `properties.audienceLists` or the Admin API's `runAccessReport`, the three surfaces built to return rows keyed to an individual visitor | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `dist/` |
 | Writes no report data to disk | nothing outside the optional audit log opens a file for writing | `src/privacy/surface.test.ts` scans `dist/` for `writeFile`, `appendFile`, `createWriteStream`, `mkdir` |
 | Blocks person-identifying dimensions unless opted in | `assertDimensionsAllowed` in `src/privacy/policy.ts` | `src/privacy/policy.test.ts` |
 | Redacts identifiers out of dimension values | `redactText` in `src/privacy/redact.ts` | `src/privacy/redact.test.ts` |
@@ -126,7 +126,7 @@ agree to.
 
 - a JSON block that does not parse, or a `plugins.entries.ga4.config` example that the real
   `configSchema` would reject;
-- a `ga4_`-prefixed tool name that is not registered — in those documents, and separately in
+- a `ga4_`-prefixed tool name that is not registered, in those documents, and separately in
   every non-test file under `src/`, because six error messages once told users to run a tool
   that had been folded into another one and never existed;
 - a backticked identifier shaped like a preset id that is not in `PRESETS`;
@@ -162,8 +162,8 @@ among roughly 200 dimensions and 150 metrics.
 
 **Every `apiName` must be verified against a live `getMetadata` response.** Not against
 Google's documentation tables, not against another plugin's field list, not from memory.
-GA4 renames fields — `conversions` became `keyEvents`, `pageviews` became `screenPageViews`
-— and both the docs and the model's training data are full of names that no longer resolve.
+GA4 renames fields (`conversions` became `keyEvents`, `pageviews` became `screenPageViews`)
+and both the docs and the model's training data are full of names that no longer resolve.
 Two of the research briefs behind this project produced hand-maintained field lists that
 disagreed with each other, which is the whole argument for checking against the property.
 
@@ -179,14 +179,14 @@ curl -s -H "Authorization: Bearer $(gcloud auth application-default print-access
 ```
 
 Then check every name in your preset appears in that output. Paste the matching lines into
-the PR description. Names that cannot be confirmed are left out rather than guessed at —
+the PR description. Names that cannot be confirmed are left out rather than guessed at;
 that is why some obvious-looking fields are missing from the existing presets.
 
 A preset PR should also satisfy:
 
 - **An explicit `orderBys`**, unless the preset is a single-row KPI shape (`dimensions: []`
   with `limit: 1`, like `overview` and `sales_summary`). "Top pages" that is not sorted
-  server-side is not top pages — it is an arbitrary 25 rows. The failure this guards against
+  server-side is not top pages; it is an arbitrary 25 rows. The failure this guards against
   is real and shipped: `adamkristopher/ga4-api-toolkit`'s `src/api/reports.ts` `runReport()`
   destructures `filters` and `orderBy` and then never puts either in the request, so a
   filtered question returns unfiltered whole-site numbers with no error at all.
@@ -194,18 +194,18 @@ A preset PR should also satisfy:
   Same reason. A preset that is silently dropped on the way to the wire is worse than a
   missing preset.
 - **Within the limits** in `src/ga4/limits.ts`: at most 9 dimensions and 10 metrics.
-  `assertWithinLimits` will reject more, before a socket opens — Google counts client errors
+  `assertWithinLimits` will reject more, before a socket opens; Google counts client errors
   against a 10,000-per-15-minutes budget that blocks a whole project-and-property pair when
   exhausted, so an invalid request must never be sent.
 - **Realtime presets** (`kind: "realtime"`) may only use the fields in `REALTIME_DIMENSIONS`
-  and `REALTIME_METRICS`. The realtime surface is much smaller than the reporting one — no
+  and `REALTIME_METRICS`. The realtime surface is much smaller than the reporting one: no
   page dimensions, no traffic source, no sessions metric.
 - **No person-identifying dimension.** `userId`, `signedInWithUserId` and `customUser:*` are
   blocked by `classifyDimension` and are not preset material under any intent.
 - **An `intent` line the model reads**, written as a plain statement of what question the
   preset answers. It is a routing input, so make it discriminating: what it returns, and
   when another preset is the better call.
-- **A `note`** when the shape needs explaining — an empty result that is normal (`ecommerce`
+- **A `note`** when the shape needs explaining: an empty result that is normal (`ecommerce`
   without ecommerce events), a `(not set)` row that is expected, or a name that misleads
   (`search_terms` is on-site search, not Google organic queries).
 
@@ -259,7 +259,7 @@ npm run check
 
 In the PR description, say what problem the change solves and what you considered and
 rejected. If it touches the network surface, the credential path, or anything in the privacy
-table above, say so explicitly at the top — those get read closely.
+table above, say so explicitly at the top; those get read closely.
 
 ---
 

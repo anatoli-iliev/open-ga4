@@ -4,7 +4,7 @@ import { DateRangeError, parseDateRange, precedingRange, resolveToDate } from ".
 // A Wednesday, so week boundaries are unambiguous.
 const TODAY = new Date("2026-08-12T09:30:00Z");
 
-describe("parseDateRange — relative forms Google resolves in property time", () => {
+describe("parseDateRange: relative forms Google resolves in property time", () => {
   it("keeps 'today' as a token rather than an absolute date", () => {
     expect(parseDateRange("today", TODAY)).toMatchObject({
       startDate: "today",
@@ -47,7 +47,7 @@ describe("parseDateRange — relative forms Google resolves in property time", (
   });
 });
 
-describe("parseDateRange — explicit dates", () => {
+describe("parseDateRange: explicit dates", () => {
   it("accepts a single ISO date as a one-day range", () => {
     expect(parseDateRange("2026-03-04", TODAY)).toMatchObject({
       startDate: "2026-03-04",
@@ -70,7 +70,7 @@ describe("parseDateRange — explicit dates", () => {
   });
 });
 
-describe("parseDateRange — calendar boundaries", () => {
+describe("parseDateRange: calendar boundaries", () => {
   it("starts 'this week' on Monday", () => {
     // 2026-08-12 is a Wednesday; that week's Monday is 2026-08-10.
     expect(parseDateRange("this week", TODAY)).toMatchObject({
@@ -126,7 +126,7 @@ describe("parseDateRange — calendar boundaries", () => {
   });
 });
 
-describe("parseDateRange — rejections", () => {
+describe("parseDateRange: rejections", () => {
   it.each(["", "   ", "sometime last spring", "0 days", "next week"])(
     "rejects %o and lists what it accepts",
     (input) => {

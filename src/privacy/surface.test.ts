@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
  * The Data API has exactly three surfaces that return per-person rows:
  * `properties.audienceExports`, `properties.audienceLists`, and the Admin API's
  * `runAccessReport`. This plugin does not call them. That claim is worth
- * something only if it is checked, so it is checked here — against `dist/`,
+ * something only if it is checked, so it is checked here, against `dist/`,
  * which is what actually ships to users.
  */
 
@@ -65,7 +65,7 @@ describe("the shipped bundle", () => {
     // defence in depth against a hardcoded URL reaching the bundle unreviewed.
     const contacted = ["analyticsadmin.googleapis.com", "analyticsdata.googleapis.com", "oauth2.googleapis.com"];
 
-    // Hosts that appear only as text shown to a human — a link in a "here is
+    // Hosts that appear only as text shown to a human: a link in a "here is
     // how to fix it" message, or the OAuth scope identifier. Never fetched.
     // Adding to this list is a deliberate, reviewable decision.
     const referencedOnly = [

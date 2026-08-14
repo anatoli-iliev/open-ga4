@@ -10,7 +10,7 @@ import { buildAssertion, GOOGLE_TOKEN_URI } from "./jwt.js";
  * assertion, and a gcloud authorized-user file via an ordinary refresh-token
  * grant.
  *
- * Tokens live in memory only. Nothing here writes to disk — a cached Google
+ * Tokens live in memory only. Nothing here writes to disk; a cached Google
  * access token on disk is a credential at rest that the user did not agree to.
  */
 

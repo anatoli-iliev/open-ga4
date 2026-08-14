@@ -36,16 +36,16 @@ export function fieldsTool(runtime: Ga4Runtime) {
     label: "GA4 field search",
     description:
       "Search the dimensions and metrics a Google Analytics 4 property actually supports.\n\n" +
-      "Use this before ga4_query whenever you are unsure of an exact API name — guessing costs a " +
+      "Use this before ga4_query whenever you are unsure of an exact API name; guessing costs a " +
       "failed request. Reads the property's live metadata, so it includes the custom dimensions " +
       "and metrics defined on that specific property, not just the standard ones.\n\n" +
       "Returns the API name to use, the name shown in the Google Analytics interface, and what " +
       "the field means.",
-    promptSnippet: "ga4_fields — find the exact Google Analytics dimension or metric name for an idea.",
+    promptSnippet: "ga4_fields: find the exact Google Analytics dimension or metric name for an idea.",
     parameters: Type.Object({
       query: Type.String({
         description:
-          "What you are looking for, in plain words — for example 'revenue', 'landing page', " +
+          "What you are looking for, in plain words, for example 'revenue', 'landing page', " +
           "'bounce', 'campaign'.",
       }),
       kind: Type.Optional(
@@ -93,7 +93,7 @@ export function fieldsTool(runtime: Ga4Runtime) {
 
       if (matches.length === 0) {
         lines.push(
-          `No dimension or metric on property ${propertyId} matches that. Try a broader word — ` +
+          `No dimension or metric on property ${propertyId} matches that. Try a broader word: ` +
             `'page', 'user', 'session', 'revenue', 'source', 'event'.`,
         );
       } else {
@@ -144,7 +144,7 @@ function renderChecks(checks: Check[], extra: string[]): string {
   const symbol = { pass: "PASS", fail: "FAIL", skip: "SKIP" } as const;
   const lines = ["## GA4 setup check", ""];
   for (const check of checks) {
-    lines.push(`- **${symbol[check.status]}** ${check.label} — ${check.detail}`);
+    lines.push(`- **${symbol[check.status]}** ${check.label}: ${check.detail}`);
     if (check.fix) {
       lines.push(`    - Fix: ${check.fix}`);
     }
@@ -166,7 +166,7 @@ export function diagnoseTool(runtime: Ga4Runtime) {
       "id. It checks credentials, both required Google APIs, property access and a live query, " +
       "and stops at the first thing that is broken rather than reporting a cascade.",
     promptSnippet:
-      "ga4_diagnose — check the Google Analytics setup and list reachable properties.",
+      "ga4_diagnose: check the Google Analytics setup and list reachable properties.",
     parameters: Type.Object({
       property_id: Type.Optional(
         Type.String({ description: "Property to test against. Defaults to the configured one." }),
@@ -265,7 +265,7 @@ export function diagnoseTool(runtime: Ga4Runtime) {
           });
           if (users === "0") {
             extra.push(
-              "The query worked but returned zero users. That is a real answer, not an error — " +
+              "The query worked but returned zero users. That is a real answer, not an error: " +
                 "check the property is the one receiving traffic, and that the date range is after " +
                 "the property started collecting.",
             );

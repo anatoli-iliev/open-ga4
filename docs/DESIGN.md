@@ -32,12 +32,12 @@ slice of the problem and impose real setup cost:
 
 ## Decisions
 
-### D1 — Package shape: `definePluginEntry`
+### D1. Package shape: `definePluginEntry`
 
 `defineToolPlugin` is the obvious choice for a tools-only plugin and was the
 first pick. It is wrong here. Reading the real SDK source rather than the docs
 (`src/plugin-sdk/tool-plugin.ts`), the object it hands to `api.registerTool` is
-exactly `{ name, label, description, parameters, outputSchema?, execute }` —
+exactly `{ name, label, description, parameters, outputSchema?, execute }`:
 there is no way to set `resultContentSource`, and no `register(api)` callback,
 so `registerHealthCheck` is unreachable. Both are load-bearing here (see D6).
 
@@ -49,10 +49,10 @@ registered tool names so drift fails CI rather than silently hiding a tool.
 Ships built JavaScript (`./dist/index.js`) via `openclaw.extensions`, per the
 packaging rule that source entries only work for workspace-local development.
 `compat.pluginApi` targets the newest *released* host, not the repository's
-`main` version — copying the bundled extensions' `>=2026.8.1` would make the
+`main` version; copying the bundled extensions' `>=2026.8.1` would make the
 plugin uninstallable on every host that actually exists today.
 
-### D2 — Zero network dependencies
+### D2. Zero network dependencies
 
 Runtime dependencies: **`typebox` only**, which OpenClaw itself depends on and
 which has no dependencies of its own. Everything else is Node built-ins.
@@ -66,13 +66,13 @@ with `node:crypto` (`createSign("RSA-SHA256")`) and calls the GA4 REST API with
 the host's configured `fetch`. This is roughly 150 lines and it makes the egress
 claim below verifiable by reading one file.
 
-### D3 — Auth: service account by default, ADC as fallback
+### D3. Auth: service account by default, ADC as fallback
 
 Resolution order, first match wins:
 
-1. `plugins.entries.ga4.config.credentials` — a path to a service-account JSON
+1. `plugins.entries.ga4.config.credentials`: a path to a service-account JSON
    key, or an OpenClaw `SecretRef`.
-2. `GOOGLE_APPLICATION_CREDENTIALS` — the Google-standard environment variable.
+2. `GOOGLE_APPLICATION_CREDENTIALS`: the Google-standard environment variable.
    Chosen because existing GA4 skills already set it, so users migrating keep
    their setup.
 3. Application Default Credentials at the well-known gcloud path
@@ -81,12 +81,12 @@ Resolution order, first match wins:
 
 Rejected as the default: an interactive OAuth loopback flow. It requires the
 user to create their own OAuth client and consent screen in Google Cloud, and
-unverified "Testing" apps have refresh tokens that expire after seven days —
+unverified "Testing" apps have refresh tokens that expire after seven days;
 the integration would silently break weekly.
 
 Only ever requests `https://www.googleapis.com/auth/analytics.readonly`.
 
-### D4 — Tool surface: intent-shaped, with one escape hatch
+### D4. Tool surface: intent-shaped, with one escape hatch
 
 Six tools. Wide enough to cover what people ask, narrow enough that the model
 picks correctly:
@@ -117,7 +117,7 @@ window of every conversation whether it is used or not.
 Results render as markdown tables, not raw JSON: fewer tokens, and the model
 reads them more reliably.
 
-### D5 — Privacy controls, enforced in code
+### D5. Privacy controls, enforced in code
 
 | Control | Default | Enforcement |
 | --- | --- | --- |
@@ -129,17 +129,17 @@ reads them more reliably.
 | Report data persisted to disk | never | No cache file, no report log. |
 | Credentials in output or logs | never | Redaction covers errors, logs, and tool results. |
 | Telemetry | none | No analytics, no phone-home, no update check. |
-| Local audit log | off | Opt-in; records query, property, and timestamp — never response bodies. |
+| Local audit log | off | Opt-in; records query, property, and timestamp, never response bodies. |
 
 The honest limitation, stated in `PRIVACY.md` rather than buried: report data
 returned to the agent is seen by whatever model provider the user has
 configured. The plugin controls what leaves Google, not what the user's own LLM
 does with it.
 
-### D6 — Analytics data is attacker-controlled input
+### D6. Analytics data is attacker-controlled input
 
 This is the part most GA4 integrations miss. A dimension value like `pagePath`
-or `pageTitle` is not authored by the property owner — it is whatever a visitor
+or `pageTitle` is not authored by the property owner; it is whatever a visitor
 requested. Anyone on the internet can visit
 `yoursite.com/?ignore-previous-instructions-and…` and have that string appear in
 tomorrow's report, and from there in an agent's context as though it were data
@@ -153,11 +153,11 @@ Two consequences:
 2. Report rows are rendered into a fenced, clearly labelled data block rather
    than interpolated into prose, so injected text does not read as instruction.
 
-Neither is a complete defence against prompt injection — nothing is — but
+Neither is a complete defence against prompt injection (nothing is), but
 declaring the provenance is strictly better than the current practice of
 returning `JSON.stringify(response)` and hoping.
 
-### D7 — No hardcoded field catalog as the source of truth
+### D7. No hardcoded field catalog as the source of truth
 
 GA4 renames things: `conversions` became `keyEvents`, and the old names survive
 only in `MetricMetadata.deprecatedApiNames`. Two of the research briefs produced
@@ -168,10 +168,10 @@ The live `properties/{id}/metadata` response is authoritative and is what
 `ga4_fields` searches. A generated snapshot ships for offline preset validation
 and fast startup, and a CI script re-fetches metadata to fail the build if any
 shipped name has disappeared. Diagnostics for a bad field name come from that
-metadata and from `checkCompatibility` — never from string-matching Google's
+metadata and from `checkCompatibility`, never from string-matching Google's
 error prose, which is unversioned and undocumented.
 
-### D8 — Errors map to fixes, not stack traces
+### D8. Errors map to fixes, not stack traces
 
 Every known GA4 failure maps to a sentence naming the cause and a next action:
 API not enabled, service account missing property access, wrong property ID,
@@ -201,7 +201,7 @@ redaction does not import the API layer, tools compose the rest.
 
 ## Verification
 
-- `npm test` — unit tests per module, with recorded GA4 responses as fixtures.
-- `npm run plugin:validate` — OpenClaw's own manifest and entry validation.
+- `npm test`: unit tests per module, with recorded GA4 responses as fixtures.
+- `npm run plugin:validate`: OpenClaw's own manifest and entry validation.
 - A live read-only smoke test against a real property, run manually, never in
   CI (CI has no credentials and must not need any).

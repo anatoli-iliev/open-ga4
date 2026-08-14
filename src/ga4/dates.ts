@@ -5,7 +5,7 @@
  * timezone of the machine running OpenClaw. Computing "yesterday" locally and
  * sending an absolute date is how integrations end up quietly off by one day.
  *
- * The API accepts relative tokens — `today`, `yesterday`, `NdaysAgo` — and
+ * The API accepts relative tokens (`today`, `yesterday`, `NdaysAgo`) and
  * resolves them in the property's timezone. So the rule here is: emit a
  * relative token whenever the request is relative, and fall back to absolute
  * dates only for calendar boundaries ("last month") that have no token form.

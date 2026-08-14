@@ -4,7 +4,7 @@ import { appendFile } from "node:fs/promises";
  * Optional local audit log.
  *
  * Off unless `privacy.auditLogPath` is set. When on, it records what was
- * *asked* — never what came back. A log that contained report rows would be
+ * *asked*, never what came back. A log that contained report rows would be
  * exactly the personal data this plugin works to keep off disk, so response
  * bodies, row values and totals never reach it.
  *
