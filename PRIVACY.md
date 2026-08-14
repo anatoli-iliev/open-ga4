@@ -169,10 +169,16 @@ Nothing.
 contains `writeFile`, `appendFile`, `createWriteStream` or `mkdir`.
 
 **The audit log is the one exception, and it is off by default.** Set
-`plugins.entries.ga4.config.privacy.auditLogPath` and the plugin appends one line per
-API call: timestamp, property id, tool name, fields requested. It never records
-response bodies, rows, or values. It exists so you can answer "what did the agent look
-at last Tuesday" without keeping the data itself.
+`plugins.entries.ga4.config.privacy.auditLogPath` and the plugin appends one JSON line
+per report the agent runs — `ga4_report`, `ga4_compare`, `ga4_realtime` and `ga4_query`
+— recording the time, the property id, the tool name, the dimensions and metrics asked
+for, the date range, and how many rows came back. It records no response bodies, no row
+values and no totals: a count of rows, never the rows. `ga4_fields` and `ga4_diagnose`
+are not logged, because neither returns measurements.
+
+It exists so you can answer "what did the agent look at last Tuesday" without keeping
+the data itself. If the file cannot be written the plugin warns and continues, because
+losing a log line is a smaller failure than losing the answer.
 
 ## 7. The limits of these guarantees
 
