@@ -1,9 +1,9 @@
 # Contributing
 
-Thanks for looking. This document covers the four things that are easy to get wrong here:
-running the tests in the right order, never pointing the OpenClaw CLI at your real
-installation, backing every privacy claim with a test, and adding a preset whose field names
-are real.
+Thanks for looking. This document covers the things that are easy to get wrong here:
+running the tests against the built bundle, never pointing the OpenClaw CLI at your real
+installation, backing every privacy claim with a test, keeping the prose consistent with the
+code, and adding a preset whose field names are real.
 
 Everything you contribute is licensed MIT, same as the rest of the project.
 
@@ -30,6 +30,7 @@ with `fetch`; both stay that way.
 ## Running the tests
 
 ```bash
+npm run check         # typecheck, then tests, then build
 npm run typecheck     # tsc -p tsconfig.check.json
 npm run build         # tsc -p tsconfig.json, emits dist/
 npm test              # vitest run
@@ -56,8 +57,7 @@ the vitest summary of the run you actually did.
 There is nothing here to validate through the CLI. `openclaw plugins build` and
 `openclaw plugins validate` understand only `defineToolPlugin` entries and reject this one,
 which is a `definePluginEntry`, so `openclaw.plugin.json` is maintained by hand and
-`src/index.test.ts` asserts it matches what the code registers. `npm run check` is the check
-that matters.
+`src/index.test.ts` asserts it matches what the code registers. Run `npm run check` instead.
 
 If you do run the OpenClaw CLI against this repo for any other reason, use the wrapper:
 
@@ -103,10 +103,10 @@ So:
   assertion, do not write the sentence.
 - **A limitation that cannot be enforced in code is documented as a limitation, not softened
   into a claim.** The load-bearing example: report data returned to the agent is seen by
-  whatever model provider the user has configured. This plugin controls what leaves Google
-  and what reaches the machine; it has no say in what the user's own LLM provider does with
-  a report once the agent reads it. `PRIVACY.md` says that plainly and nothing in the docs
-  may imply otherwise.
+  whatever model provider the user has configured. This plugin controls what it asks Google
+  for and what it hands to the agent; it has no say in what the user's own LLM provider does
+  with a report once the agent reads it. `PRIVACY.md` says that plainly and nothing in the
+  docs may imply otherwise.
 - **Do not weaken an assertion to make a change pass.** If `surface.test.ts` fails because
   your patch added a host, a scope, a disk write or a per-person API surface, the patch is
   the problem. Widening the allowlist is a reviewable decision with a discussion attached to
@@ -116,6 +116,29 @@ Three things are never acceptable in a patch: a write scope, any telemetry or ph
 (including update checks), and persisting report data or tokens to disk. Tokens are held in
 memory only. A cached access token in a file is a credential at rest that the user did not
 agree to.
+
+---
+
+## Why a prose edit can fail the build
+
+`src/docs.test.ts` reads `README.md`, `SETUP.md`, `PRIVACY.md`, `SECURITY.md`,
+`CONTRIBUTING.md` and `CHANGELOG.md`, and fails on:
+
+- a JSON block that does not parse, or a `plugins.entries.ga4.config` example that the real
+  `configSchema` would reject;
+- a `ga4_`-prefixed tool name that is not registered — in those documents, and separately in
+  every non-test file under `src/`, because six error messages once told users to run a tool
+  that had been folded into another one and never existed;
+- a backticked identifier shaped like a preset id that is not in `PRESETS`;
+- an `npm run` script that is not in `package.json`;
+- a `googleapis.com` host that is not in `ALLOWED_HOSTS`, apart from the two named in
+  `SECURITY.md` as examples of what the allowlist rejects;
+- `PRIVACY.md` not naming every allowed host, or not stating that the reader's own model
+  provider still sees the data.
+
+So renaming a tool, a script or a preset breaks the build until the sentence that mentions
+it is updated in the same commit. What the test cannot check is whether a sentence is true.
+That is what review is for, and it is the harder half.
 
 ---
 
@@ -200,7 +223,8 @@ Look at `git log` for the pattern. In short:
   rejected, what failure mode the change prevents, what surprising thing about the API forced
   the shape. If a future reader would ask "why on earth is it done this way", answer it here.
 - Wrap the body at about 80 columns. Blank line after the subject.
-- **Last line is the test count**: `203 tests.`
+- **Last line is the test count** from the vitest summary, when the commit changed the
+  suite. The example below shows the form.
 - **No AI attribution.** No `Co-Authored-By` trailers, no "Generated with", no tool
   footers, no emoji. The commit log is a technical record of decisions; whose keyboard the
   characters came from is not part of it.
@@ -230,10 +254,7 @@ you cannot reconstruct from the diff, and it is the part worth writing down.
 ## Before you open a pull request
 
 ```bash
-npm run typecheck
-npm run build
-npm test
-./scripts/openclaw-sandbox.sh plugins validate --entry ./dist/index.js
+npm run check
 ```
 
 In the PR description, say what problem the change solves and what you considered and

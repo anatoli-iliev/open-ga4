@@ -111,12 +111,13 @@ reasons. An agent that reads those values turns that into a prompt-injection cha
   redacted.
 - Every tool registers with `resultContentSource: "network"`, OpenClaw's marker for
   externally controlled content. **No released host reads it yet.** The string occurs
-  zero times in openclaw 2026.7.1-2, which is currently `latest` and the floor this
-  plugin supports; it appears only in the 2026.8 line, currently `beta`. The field is
-  set unconditionally so the labelling starts working the moment you upgrade, and it is
-  why the plugin uses `definePluginEntry` rather than `defineToolPlugin`, which cannot
-  set the field. Until your host reads it, the framing and escaping above are the only
-  things separating visitor-authored text from trusted output.
+  zero times in openclaw 2026.7.1-2, the current `latest`; it appears only in the 2026.8
+  line, which is still on the `beta` tag. This plugin's floor is `>=2026.7.1`, so on a
+  supported host the field is emitted and ignored. It is set unconditionally anyway, so
+  the labelling starts working the moment you upgrade, and it is why the plugin uses
+  `definePluginEntry` rather than `defineToolPlugin`, which cannot set the field. Until
+  your host reads it, the framing and escaping above are the only things separating
+  visitor-authored text from trusted output.
 
 **What it does not do.** None of this stops a model from acting on text it read. It
 reduces the risk; it does not eliminate it, and nothing does. If you wire an agent to
@@ -125,8 +126,8 @@ The numbers are trustworthy. The strings are not.
 
 **In scope for a report:** a dimension value that escapes the fenced block, forges a
 header or caveat line, or otherwise breaks the framing. That is a bug in this plugin.
-**Out of scope:** a model choosing to follow instructions that were correctly labelled
-as untrusted network content.
+**Out of scope:** a model choosing to follow instructions that were correctly framed as
+visitor-supplied data.
 
 ### 3. Exfiltration through a compromised dependency
 
