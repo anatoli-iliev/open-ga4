@@ -1,12 +1,12 @@
-# openclaw-plugin-ga4
+# open-ga4
 
 Read-only Google Analytics 4 reporting for an OpenClaw agent, running on your own machine.
 
-**GA4 Analytics** adds six tools to OpenClaw so an agent can answer questions about a GA4
+**Open GA4** adds six tools to OpenClaw so an agent can answer questions about a GA4
 property: what the top pages were last month, where traffic came from, what changed since
 last year, who is on the site right now. It calls Google's REST API directly: no gateway,
 no vendor account, no Python. It is for people who run OpenClaw locally, and who would
-rather read a plugin's whole network surface than trust a description of it. That surface
+rather read a skill's whole network surface than trust a description of it. That surface
 is one runtime dependency, three allowed hosts, and one OAuth scope.
 
 ## What it does
@@ -33,38 +33,8 @@ names an intent instead of guessing that "pageviews" is spelled `screenPageViews
 
 ## Install
 
-No release has been published to npm yet, so there is nothing to install from the registry
-today. Once the first release is out, this is the command:
-
-```bash
-openclaw plugins install openclaw-plugin-ga4
-```
-
-Until then, clone this repository and run `npm install`, then `npm run build`. The entry
-point is the built `dist/index.js`, which `package.json` declares under
-`openclaw.extensions`.
-
-Requires OpenClaw `>=2026.7.1`. Then add a config entry:
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "ga4": {
-        "enabled": true,
-        "config": {
-          "credentials": "~/.openclaw/credentials/ga4.json",
-          "propertyId": "123456789"
-        }
-      }
-    }
-  }
-}
-```
-
-`credentials` is optional. Without it the plugin looks at `GOOGLE_APPLICATION_CREDENTIALS`,
-then at `~/.config/gcloud/application_default_credentials.json`, in that order, so if you
-already authenticated for another Google tool, you are already set up.
+Install instructions are rewritten in the skill packaging change; see
+[the design spec](docs/superpowers/specs/2026-08-16-open-ga4-design.md).
 
 ## Setup
 
@@ -85,10 +55,10 @@ Five steps here, eight in the click-by-click version, about ten minutes.
    untick "Notify new users by email", and give it **Viewer** and nothing else. Access is
    granted here, inside Analytics, not in Google Cloud. Skipping this produces a 403 that
    says nothing useful; `ga4_diagnose` translates it.
-5. **Point the plugin at the key and the property id**, then run `ga4_diagnose`. The
+5. **Point the skill at the key and the property id**, then run `ga4_diagnose`. The
    property id is the 9–10 digit number under **Admin > Property details**, not the
    `G-XXXXXXXXXX` measurement ID from your site's tag. Paste the measurement ID and the
-   plugin will tell you which number you actually need.
+   skill will tell you which number you actually need.
 
 ## Why this one
 
@@ -105,7 +75,7 @@ Five steps here, eight in the click-by-click version, about ten minutes.
   `console.cloud.google.com` and `console.developers.google.com`, which are the "enable the
   API here" link printed in an error message, and `www.googleapis.com`, which appears
   inside the OAuth scope identifier. Your credentials go to Google and to no third-party
-  service. The allowlist constrains which host the plugin asks for, not what your system
+  service. The allowlist constrains which host the skill asks for, not what your system
   does with the request: if OpenClaw or your machine is configured with an HTTP proxy or a
   TLS-intercepting middlebox, this traffic traverses it exactly as all other OpenClaw
   traffic does.
@@ -128,7 +98,7 @@ Verified comparisons, each backed by a fetched artifact:
 
 | Project | Verified fact | Here instead |
 | --- | --- | --- |
-| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request; a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this plugin cannot honour raises an error naming why, rather than being dropped: asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
+| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request; a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this skill cannot honour raises an error naming why, rather than being dropped: asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
 | [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | `skills/ga4/SKILL.md` declares `requires: {"bins": ["python3"]}` and every example runs `python3 scripts/ga4_query.py`. Those scripts tell you to `pip install google-analytics-data google-auth-oauthlib` on the host. | A TypeScript plugin that runs in the OpenClaw process. No Python, no `pip`, no shell tool. |
 
 ## Analytics data is untrusted input
@@ -140,7 +110,7 @@ Anyone can open `yoursite.com/?<any text they like>` and that text lands in `pag
 marketer-written field. Referrer spam has been doing this to Google Analytics for a decade
 for SEO reasons. An agent that reads those values turns it into a prompt-injection channel.
 
-This plugin does two things about it:
+This skill does two things about it:
 
 1. Every tool registers with `resultContentSource: "network"`, OpenClaw's marker for
    externally controlled content. The field landed in OpenClaw 2026.8; the newest released
@@ -166,13 +136,13 @@ Full detail in [PRIVACY.md](PRIVACY.md). The short version:
   numbers confirmed by Luhn, long opaque tokens, and the values of query parameters outside
   a keep-list. The report says how many values were masked.
 - `userId` and user-scoped custom dimensions are refused unless you explicitly opt in.
-- The plugin never calls `properties.audienceExports`, `properties.audienceLists` or the
+- The skill never calls `properties.audienceExports`, `properties.audienceLists` or the
   Admin API's `runAccessReport`, the three surfaces built to hand back rows keyed to an
   individual visitor, and a test asserts those strings are absent from the built bundle.
   That is narrower than "cannot read per-user data": `runReport` returns per-person rows as
   soon as the `userId` dimension is used, which is why that dimension is blocked by default.
 - **What this does not protect you from:** report data returned to the agent is seen by
-  whatever model provider you have configured. This plugin controls what it asks Google for
+  whatever model provider you have configured. This skill controls what it asks Google for
   and what it hands to the agent. Redaction runs here, on a response that has already left
   Google and arrived on your machine in full, so it changes what the model sees and not what
   Google holds. It has no say in what your own LLM provider does with a report once the
@@ -209,7 +179,8 @@ The design decisions, and what was rejected, are in [docs/DESIGN.md](docs/DESIGN
 
 ## License
 
-MIT © 2026 Anatoli Iliev <anatoli@helphabit.com>. See [LICENSE](LICENSE).
+MIT-0 (MIT No Attribution) © 2026 Anatoli Iliev <anatoli@helphabit.com>. See
+[LICENSE](LICENSE).
 
 ## Trademarks
 

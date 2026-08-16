@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,5 +192,37 @@ describe("the source", () => {
 
     await walk(path.join(repoRoot, "src"));
     expect([...new Set(offenders)]).toEqual([]);
+  });
+});
+
+describe("project identity", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
+    name: string;
+    repository: { url: string };
+    homepage: string;
+    bugs: { url: string };
+    license: string;
+  };
+
+  it("is named open-ga4", () => {
+    expect(pkg.name).toBe("open-ga4");
+  });
+
+  it("points every url at the open-ga4 repository", () => {
+    for (const url of [pkg.repository.url, pkg.homepage, pkg.bugs.url]) {
+      expect(url).toContain("anatoli-iliev/open-ga4");
+      expect(url).not.toContain("openclaw-plugin-ga4");
+    }
+  });
+
+  it("is licensed MIT-0", () => {
+    expect(pkg.license).toBe("MIT-0");
+    expect(readFileSync("LICENSE", "utf8")).toContain("MIT No Attribution");
+  });
+
+  it("mentions the old name nowhere in shipped documentation", () => {
+    for (const file of ["README.md", "SETUP.md", "PRIVACY.md", "SECURITY.md", "CONTRIBUTING.md"]) {
+      expect(readFileSync(file, "utf8")).not.toContain("openclaw-plugin-ga4");
+    }
   });
 });
