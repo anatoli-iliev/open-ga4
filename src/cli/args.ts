@@ -32,13 +32,14 @@ export const FORBIDDEN_FLAGS = [
 ] as const;
 
 /**
- * Only report and compare take a preset id as their positional (ReportParams
- * and CompareParams in src/tools/reports.ts). Every other command's
- * positional is free text passed straight to Google or matched literally
- * (FieldsParams.query in src/tools/discovery.ts, for one), so rewriting its
- * hyphens would silently change what the user asked for.
+ * report, compare and live all take a preset id as their positional
+ * (ReportParams.report, CompareParams.report and RealtimeParams.breakdown in
+ * src/tools/reports.ts). Every other command's positional is free text passed
+ * straight to Google or matched literally (FieldsParams.query in
+ * src/tools/discovery.ts, for one), so rewriting its hyphens would silently
+ * change what the user asked for.
  */
-const NORMALIZE_ID_COMMANDS = new Set(["report", "compare"]);
+const NORMALIZE_ID_COMMANDS = new Set(["report", "compare", "live"]);
 
 const KNOWN_FLAGS: Record<string, readonly string[]> = {
   doctor: ["json"],

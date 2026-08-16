@@ -59,9 +59,13 @@ describe("parseArgs", () => {
       .toMatchObject({ positional: ["--weird-field-name"] });
   });
 
-  it("normalizes the preset id for report and compare only", () => {
+  it("normalizes the preset id for report, compare and live", () => {
+    // live's positional is a realtime breakdown preset id (RealtimeParams.breakdown
+    // in src/tools/reports.ts), the same shape as report's and compare's, so it
+    // gets the same hyphen-to-underscore treatment.
     expect(parseArgs(["report", "top-pages"])).toMatchObject({ positional: ["top_pages"] });
     expect(parseArgs(["compare", "top-pages"])).toMatchObject({ positional: ["top_pages"] });
+    expect(parseArgs(["live", "realtime-pages"])).toMatchObject({ positional: ["realtime_pages"] });
   });
 
   it("passes positionals through verbatim for every other command", () => {
