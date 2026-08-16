@@ -1,6 +1,7 @@
 import type { OrderBy, RunReportRequest, RunReportResponse } from "../ga4/client.js";
 import { quotaWarning } from "../ga4/client.js";
 import { parseDateRange, precedingRange, type Ga4DateRange } from "../ga4/dates.js";
+import { Ga4Error } from "../ga4/errors.js";
 import { formatReport } from "../ga4/format.js";
 import { buildFilters, type FilterCondition } from "../ga4/filters.js";
 import { applyRenames, assertRealtimeFields, assertWithinLimits, LIMITS } from "../ga4/limits.js";
@@ -110,7 +111,11 @@ export async function runReport(
 ): Promise<ReportOutcome> {
   const preset = findPreset(params.report);
   if (!preset) {
-    throw new Error(`Unknown report "${params.report}". Available: ${CORE_PRESETS.join(", ")}.`);
+    throw new Ga4Error(
+      "INVALID_REQUEST",
+      `Unknown report "${params.report}".`,
+      `Available: ${CORE_PRESETS.join(", ")}.`,
+    );
   }
 
   const propertyId = runtime.resolveProperty(params.property_id);
@@ -132,9 +137,10 @@ export async function runReport(
   if (params.filter_contains) {
     const field = preset.dimensions[0];
     if (!field) {
-      throw new Error(
-        `The ${preset.id} report has no dimension to filter on. Choose a report with rows ` +
-          `(such as top_pages or traffic_sources), or use ga4_query.`,
+      throw new Ga4Error(
+        "INVALID_REQUEST",
+        `The ${preset.id} report has no dimension to filter on.`,
+        "Choose a report with rows (such as top_pages or traffic_sources), or use ga4_query.",
       );
     }
     dimensionFilter = {
@@ -186,7 +192,11 @@ export async function runCompare(
 ): Promise<ReportOutcome> {
   const preset = findPreset(params.report);
   if (!preset) {
-    throw new Error(`Unknown report "${params.report}". Available: ${CORE_PRESETS.join(", ")}.`);
+    throw new Ga4Error(
+      "INVALID_REQUEST",
+      `Unknown report "${params.report}".`,
+      `Available: ${CORE_PRESETS.join(", ")}.`,
+    );
   }
 
   const propertyId = runtime.resolveProperty(params.property_id);
@@ -248,9 +258,14 @@ export async function runRealtime(
   params: RealtimeParams,
   signal?: AbortSignal,
 ): Promise<ReportOutcome> {
-  const preset = findPreset(params.breakdown ?? "realtime_now");
+  const breakdownId = params.breakdown ?? "realtime_now";
+  const preset = findPreset(breakdownId);
   if (!preset || preset.kind !== "realtime") {
-    throw new Error(`Unknown realtime breakdown. Available: ${REALTIME_PRESETS.join(", ")}.`);
+    throw new Ga4Error(
+      "INVALID_REQUEST",
+      `Unknown realtime breakdown "${breakdownId}".`,
+      `Available: ${REALTIME_PRESETS.join(", ")}.`,
+    );
   }
 
   const propertyId = runtime.resolveProperty(params.property_id);

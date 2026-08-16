@@ -41,10 +41,29 @@ export const FORBIDDEN_FLAGS = [
  */
 const NORMALIZE_ID_COMMANDS = new Set(["report", "compare", "live"]);
 
-const KNOWN_FLAGS: Record<string, readonly string[]> = {
+/**
+ * The flags each command accepts. Every name here must reach a real field on
+ * the operation's parameter type in src/tools/reports.ts or
+ * src/tools/discovery.ts (checked by src/cli/main.test.ts's "every KNOWN_FLAGS
+ * entry reaches a real field" suite), with one deliberate exception: "json"
+ * is reserved to select markdown vs JSON output in main() itself (wired up in
+ * a later task), not a field on any parameter type, so it never becomes one.
+ * A name listed here that dispatch never reads is exactly the defect
+ * README.md calls out in a competing tool: a parameter that parses
+ * successfully and is then silently dropped, rather than raising or doing
+ * what it says.
+ *
+ * compare previously listed "against" and "filter" here. Neither has ever had
+ * a field on CompareParams to land in (no way to choose the comparison period,
+ * and no filtering capability on compare at all), so both parsed successfully
+ * and vanished. Removed; the existing unknown-option error now names them
+ * correctly, and adding either back is new feature work on CompareParams and
+ * runCompare, not an args.ts change.
+ */
+export const KNOWN_FLAGS: Record<string, readonly string[]> = {
   doctor: ["json"],
   report: ["property", "range", "start", "end", "limit", "filter", "json"],
-  compare: ["property", "range", "against", "limit", "filter", "json"],
+  compare: ["property", "range", "limit", "json"],
   live: ["property", "limit", "json"],
   query: ["property", "dimensions", "metrics", "range", "start", "end", "limit", "filter", "sort", "json"],
   fields: ["property", "kind", "json"],

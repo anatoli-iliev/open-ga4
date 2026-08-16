@@ -1,3 +1,5 @@
+import { Ga4Error } from "./errors.js";
+
 /**
  * Request limits and the metric renames, enforced before a socket is opened.
  *
@@ -63,12 +65,29 @@ export function applyRenames(names: readonly string[]): {
   return { names: mapped, rewrites };
 }
 
-export class Ga4RequestError extends Error {
+/**
+ * A request the client can already tell Google would reject: too many
+ * dimensions, an empty request, a filter value that will not parse, and so on.
+ *
+ * Extends Ga4Error, rather than a plain Error, so it carries the same exit
+ * code as every other bad-input failure: `code` is fixed at INVALID_REQUEST,
+ * which exitCodeFor already maps to exit 2. Before this, a plain Error here
+ * fell through diagnose()'s generic "UNEXPECTED" bucket and read as a refusal
+ * from Google that was never asked for; nothing here ever reaches a network
+ * call. `reason` keeps the specific check that failed (EMPTY_REQUEST,
+ * TOO_MANY_DIMENSIONS, BAD_FILTER_VALUE, ...) for anyone who wants more detail
+ * than "invalid request"; it does not affect the exit code.
+ */
+export class Ga4RequestError extends Ga4Error {
   constructor(
-    readonly code: string,
+    readonly reason: string,
     message: string,
   ) {
-    super(message);
+    super(
+      "INVALID_REQUEST",
+      message,
+      "This was caught locally, before any request reached Google. Fix the value named above and try again.",
+    );
     this.name = "Ga4RequestError";
   }
 }

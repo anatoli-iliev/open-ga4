@@ -30,6 +30,10 @@ Commands:
   fields <search>            Search the property's live field catalog
   properties                 List the properties this credential can read
 
+query's --filter is one condition, exactly field:operator:value (for example
+country:exact:US; no colon inside field, operator or value). Operators:
+${FILTER_OPERATORS.join(", ")}.
+
 Run a command with --help for its options.
 Settings live in the environment; see SKILL.md.
 `;
@@ -80,7 +84,7 @@ export async function main(
 }
 
 /** The "command" branch of ParsedArgs, narrowed once so every reader below can use it directly. */
-type CommandArgs = Extract<ParsedArgs, { kind: "command" }>;
+export type CommandArgs = Extract<ParsedArgs, { kind: "command" }>;
 type Flags = CommandArgs["flags"];
 
 /** A flag's raw value, or undefined if it was not given. Every flag this CLI
@@ -126,25 +130,30 @@ function kindFlag(flags: Flags): "any" | "dimension" | "metric" | undefined {
 }
 
 /**
- * query's --filter is one condition, `field:operator:value`. Only the first
- * two colons are significant, so a value that carries one of its own (a URL,
- * say) and an in_list value's own commas both survive intact.
+ * query's --filter is one condition, exactly three colon-separated segments:
+ * `field:operator:value` (for example `country:exact:US`; operators are
+ * listed in FILTER_OPERATORS and repeated in the USAGE text). Anything with
+ * fewer or more than three segments, or an empty one, is rejected rather than
+ * guessed at: a value cannot itself contain a colon, since GA4 dimension and
+ * metric values essentially never do (country names, page paths, event
+ * names), and silently taking "the first two colons" as the split would make
+ * a typo (an extra colon) parse into the wrong field or value instead of
+ * raising.
  */
 function filterFlag(flags: Flags): FilterCondition[] | undefined {
   const raw = str(flags, "filter");
   if (raw === undefined) return undefined;
-  const first = raw.indexOf(":");
-  const second = first === -1 ? -1 : raw.indexOf(":", first + 1);
-  if (first === -1 || second === -1) {
+  const parts = raw.split(":");
+  if (parts.length !== 3 || parts.some((part) => part.length === 0)) {
     throw new UsageError(
-      `--filter must look like field:operator:value (got ${JSON.stringify(raw)}). Operators: ` +
+      `--filter must be exactly field:operator:value (got ${JSON.stringify(raw)}). Operators: ` +
         `${FILTER_OPERATORS.join(", ")}.`,
     );
   }
   return [{
-    field: raw.slice(0, first),
-    op: raw.slice(first + 1, second) as FilterOperator,
-    value: raw.slice(second + 1),
+    field: parts[0]!,
+    op: parts[1]! as FilterOperator,
+    value: parts[2]!,
   }];
 }
 
@@ -162,7 +171,7 @@ function requirePositional(positional: string[], example: string): string {
  * returns its markdown. Kept in this file, not split out: this mapping is
  * what a reviewer most needs to see in one place.
  */
-async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: NodeJS.ProcessEnv): Promise<string> {
+export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: NodeJS.ProcessEnv): Promise<string> {
   const { command, positional, flags } = parsed;
   switch (command) {
     case "doctor":
