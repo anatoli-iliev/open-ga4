@@ -72,7 +72,6 @@ describe("the shipped bundle", () => {
       "www.googleapis.com", // inside the analytics.readonly scope string
       "console.cloud.google.com", // "enable the API here" link in errors.ts
       "console.developers.google.com", // same link, as Google returns it in Help details
-      "example.com", // worked --filter example on a URL-valued field, in main.ts's USAGE text
     ];
 
     const allowed = new Set([...contacted, ...referencedOnly]);

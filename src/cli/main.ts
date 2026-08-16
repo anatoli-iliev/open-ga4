@@ -31,9 +31,9 @@ Commands:
   properties                 List the properties this credential can read
 
 query's --filter is one condition, field:operator:value (for example
-country:exact:US). Only the first two colons matter, so a value may contain
-its own, as in pageLocation:contains:https://example.com/checkout. Operators:
-${FILTER_OPERATORS.join(", ")}.
+country:exact:US). Only the first two colons split the expression, so the
+value may contain colons of its own, such as a full URL (pageLocation and
+pageReferrer are URLs). Operators: ${FILTER_OPERATORS.join(", ")}.
 
 Run a command with --help for its options.
 Settings live in the environment; see SKILL.md.
@@ -136,9 +136,10 @@ function kindFlag(flags: Flags): "any" | "dimension" | "metric" | undefined {
  * everything before the first, operator is everything between the first and
  * second, and value is everything after the second, colons and all. This
  * matters because pageLocation and pageReferrer are full URLs, and filtering
- * on one (`pageLocation:contains:https://example.com/checkout`) is ordinary,
- * not an edge case; truncating the value at its own colon would silently
- * misread the request rather than raise.
+ * on one is ordinary, not an edge case: a URL's own colon (its scheme
+ * separator) must survive intact in the value rather than be mistaken for
+ * the delimiter; truncating there would silently misread the request rather
+ * than raise.
  *
  * A field or an operator cannot themselves contain a colon (there is no
  * legitimate reason for either to), so a missing colon still raises, and the
