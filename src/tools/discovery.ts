@@ -109,11 +109,18 @@ export async function runFields(
   };
 }
 
-type Check = {
+/**
+ * `code` is the Ga4Error code behind a "fail", when there was one. It is what
+ * src/setup/state.ts keys on to build `doctor --json`'s machine-readable
+ * state: undefined for a check that is not error-driven at all (the privacy
+ * settings check below never sets it), present for everything else.
+ */
+export type Check = {
   label: string;
   status: "pass" | "fail" | "skip";
   detail: string;
   fix?: string;
+  code?: string;
 };
 
 function renderChecks(checks: Check[], extra: string[]): string {
@@ -199,7 +206,12 @@ export async function runDiagnose(
     checks.push({
       label: "Google credentials",
       status: "pass",
-      detail: `loaded from ${used?.label ?? "an unknown source"}${
+      // used.path is the real path once a credential is confirmed to have
+      // loaded successfully (see resolveCredentials in auth/credentials.ts);
+      // naming it is what makes a stale path pointing at the wrong key file
+      // findable, which the label alone (just "GA4_CREDENTIALS (file)")
+      // cannot say.
+      detail: `loaded from ${used?.label ?? "an unknown source"}${used?.path ? ` at ${used.path}` : ""}${
         runtime.principal() ? `, service account ${runtime.principal()}` : ""
       }`,
     });
@@ -210,6 +222,7 @@ export async function runDiagnose(
       status: "fail",
       detail: named.message,
       fix: named.fix,
+      code: named.code,
     });
     return { markdown: renderChecks(checks, extra), details: { ok: false, checks } };
   }
@@ -231,6 +244,7 @@ export async function runDiagnose(
       status: "fail",
       detail: named.message,
       fix: named.fix,
+      code: named.code,
     });
   }
 
@@ -245,6 +259,7 @@ export async function runDiagnose(
       status: "fail",
       detail: named.message,
       fix: named.fix,
+      code: named.code,
     });
   }
 
@@ -279,6 +294,7 @@ export async function runDiagnose(
         status: "fail",
         detail: named.message,
         fix: named.fix,
+        code: named.code,
       });
     }
   }

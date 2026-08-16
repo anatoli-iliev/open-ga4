@@ -123,6 +123,59 @@ describe("main", () => {
       expect(c.out.join("")).toContain(command);
     }
   });
+
+  it("doctor --json exits 0 even though setup is incomplete: it succeeded at diagnosing", async () => {
+    // Runs through main() itself, not dispatch()+fakeRuntime(), specifically
+    // to exercise real credential resolution finding nothing: with no
+    // GA4_CREDENTIALS, no GOOGLE_APPLICATION_CREDENTIALS, and (on the machine
+    // this suite runs on) no real gcloud ADC file either, this deterministically
+    // reaches the no-credentials branch rather than a real Google request.
+    const c = capture();
+    const code = await main(["doctor", "--json"], {}, c.streams);
+    expect(code).toBe(0);
+    expect(c.err.join("")).toBe("");
+    const state = JSON.parse(c.out.join("")) as { ok: boolean; blocked_on: string };
+    expect(state.ok).toBe(false);
+    expect(state.blocked_on).toBe("no_credentials");
+  });
+});
+
+describe("--json", () => {
+  it("doctor --json returns setupStateFrom's shape, not the markdown checklist", async () => {
+    const { runtime } = fakeRuntime();
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: true } };
+    const result = await dispatch(runtime, parsed, {});
+    const state = JSON.parse(result) as { ok: boolean; blocked_on: string; principal?: string };
+    expect(state).toEqual({ ok: true, blocked_on: "ok", principal: "reader@example.iam.gserviceaccount.com" });
+  });
+
+  it("doctor without --json still returns the markdown checklist", async () => {
+    const { runtime } = fakeRuntime();
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: {} };
+    const result = await dispatch(runtime, parsed, {});
+    expect(result).toMatch(/^## GA4 setup check/);
+  });
+
+  it("properties --json returns the operation's structured details", async () => {
+    const { runtime } = fakeRuntime();
+    const parsed: CommandArgs = { kind: "command", command: "properties", positional: [], flags: { json: true } };
+    const result = await dispatch(runtime, parsed, {});
+    expect(JSON.parse(result)).toEqual({ properties: [] });
+  });
+
+  it("report --json returns structured details instead of a markdown table", async () => {
+    const { runtime } = fakeRuntime();
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "report",
+      positional: ["overview"],
+      flags: { json: true, property: "123456789" },
+    };
+    const result = await dispatch(runtime, parsed, {});
+    const details = JSON.parse(result) as { propertyId: string };
+    expect(details.propertyId).toBe("123456789");
+    expect(result).not.toContain("|");
+  });
 });
 
 describe("client-side validation exits 2, not 1 or 4", () => {
@@ -270,13 +323,16 @@ describe("VERSION", () => {
 });
 
 describe("every KNOWN_FLAGS entry reaches a real field", () => {
-  // "json" is a deliberate exception: it selects markdown vs JSON output in
-  // main() itself (wired up in a later task), not a field on any operation's
-  // parameter type, so dispatch never reads it directly. Every other flag
-  // KNOWN_FLAGS lists for a command must be read while building that
-  // command's parameters, or it is exactly the "parses successfully and is
-  // then silently dropped" defect README.md calls out in a competing tool.
-  const EXEMPT = new Set(["json"]);
+  // "json" used to be a deliberate exception here: it selects markdown vs
+  // JSON output rather than landing on a field of any operation's parameter
+  // type. It no longer needs the exemption, because dispatch now reads
+  // flags.json directly (unconditionally, before the switch) to make that
+  // selection, so the Proxy below records it as accessed like any other
+  // flag. Every flag KNOWN_FLAGS lists for a command must be read while
+  // dispatch handles that command, or it is exactly the "parses successfully
+  // and is then silently dropped" defect README.md calls out in a competing
+  // tool.
+  const EXEMPT = new Set<string>();
 
   const EXAMPLE: Record<string, string> = {
     property: "123456789",

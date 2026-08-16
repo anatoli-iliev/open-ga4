@@ -3,8 +3,9 @@ import { diagnose } from "../ga4/errors.js";
 import { FILTER_OPERATORS, type FilterCondition, type FilterOperator } from "../ga4/filters.js";
 import { redactText } from "../privacy/redact.js";
 import { createRuntime, type Ga4Runtime } from "../runtime.js";
+import { setupStateFrom } from "../setup/state.js";
 import { runCompare, runQuery, runRealtime, runReport } from "../tools/reports.js";
-import { runDiagnose, runFields, runProperties } from "../tools/discovery.js";
+import { runDiagnose, runFields, runProperties, type Check } from "../tools/discovery.js";
 import { parseArgs, UsageError, type ParsedArgs } from "./args.js";
 import { EXIT, exitCodeFor } from "./exit.js";
 import type { Streams } from "./render.js";
@@ -175,18 +176,39 @@ function requirePositional(positional: string[], example: string): string {
   return value;
 }
 
+/** Every operation returns `{ markdown, details }`; `--json` selects `details` over `markdown`. */
+function output(result: { markdown: string; details: unknown }, json: boolean): string {
+  return json ? JSON.stringify(result.details, null, 2) : result.markdown;
+}
+
 /**
  * Converts each command's flags into the operation's own parameter object and
- * returns its markdown. Kept in this file, not split out: this mapping is
- * what a reviewer most needs to see in one place.
+ * returns its markdown, or with `--json`, its structured details instead.
+ * Kept in this file, not split out: this mapping is what a reviewer most
+ * needs to see in one place.
  */
 export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: NodeJS.ProcessEnv): Promise<string> {
   const { command, positional, flags } = parsed;
+  // Read unconditionally, before the switch, so every command's flags object
+  // is touched regardless of which branch runs below (src/cli/main.test.ts's
+  // "every KNOWN_FLAGS entry reaches a real field" suite checks that every
+  // declared flag is actually read).
+  const json = flags.json !== undefined;
   switch (command) {
-    case "doctor":
-      return (await runDiagnose(runtime, {})).markdown;
+    case "doctor": {
+      const result = await runDiagnose(runtime, {});
+      if (json) {
+        // doctor's own `details` is the raw Check[] the markdown checklist
+        // renders from: useful for a person, but still a wall of everything
+        // that was checked. setupStateFrom reduces that to the one blocking
+        // step, which is what --json is for on this command specifically.
+        const { checks } = result.details as { checks: Check[] };
+        return JSON.stringify(setupStateFrom(checks, runtime.principal()), null, 2);
+      }
+      return result.markdown;
+    }
     case "report":
-      return (await runReport(runtime, {
+      return output(await runReport(runtime, {
         report: requirePositional(positional, "report overview"),
         property_id: str(flags, "property"),
         date_range: str(flags, "range"),
@@ -194,22 +216,22 @@ export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: N
         end_date: str(flags, "end"),
         limit: num(flags, "limit"),
         filter_contains: str(flags, "filter"),
-      })).markdown;
+      }), json);
     case "compare":
-      return (await runCompare(runtime, {
+      return output(await runCompare(runtime, {
         report: requirePositional(positional, "compare overview"),
         property_id: str(flags, "property"),
         date_range: str(flags, "range"),
         limit: num(flags, "limit"),
-      })).markdown;
+      }), json);
     case "live":
-      return (await runRealtime(runtime, {
+      return output(await runRealtime(runtime, {
         breakdown: positional[0],
         property_id: str(flags, "property"),
         limit: num(flags, "limit"),
-      })).markdown;
+      }), json);
     case "query":
-      return (await runQuery(runtime, {
+      return output(await runQuery(runtime, {
         metrics: csv(flags, "metrics") ?? [],
         dimensions: csv(flags, "dimensions"),
         property_id: str(flags, "property"),
@@ -219,15 +241,15 @@ export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: N
         filters: filterFlag(flags),
         order_by: str(flags, "sort"),
         limit: num(flags, "limit"),
-      })).markdown;
+      }), json);
     case "fields":
-      return (await runFields(runtime, {
+      return output(await runFields(runtime, {
         query: requirePositional(positional, "fields sessions"),
         kind: kindFlag(flags),
         property_id: str(flags, "property"),
-      })).markdown;
+      }), json);
     case "properties":
-      return (await runProperties(runtime, {})).markdown;
+      return output(await runProperties(runtime, {}), json);
     default:
       // Unreachable: parseArgs validates command against COMMANDS before
       // returning a "command" result. Kept so the switch satisfies the

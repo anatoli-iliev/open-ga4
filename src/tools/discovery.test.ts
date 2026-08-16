@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { configFromEnv } from "../config.js";
+import type { CredentialProbe } from "../auth/credentials.js";
 import type { AccountSummary, Ga4Client, MetadataResponse, RunReportResponse } from "../ga4/client.js";
 import { assertPropertyAllowed, normalizePropertyId } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
@@ -12,6 +13,7 @@ type StubOptions = {
   reportResponse?: RunReportResponse;
   metadata?: MetadataResponse;
   clientError?: Error;
+  probes?: CredentialProbe[];
 };
 
 function stubRuntime(options: StubOptions = {}): { runtime: Ga4Runtime; client: Ga4Client } {
@@ -37,7 +39,7 @@ function stubRuntime(options: StubOptions = {}): { runtime: Ga4Runtime; client: 
       return client;
     },
     principal: () => "reader@example.iam.gserviceaccount.com",
-    probes: () => [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
+    probes: () => options.probes ?? [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
     resolveProperty: (explicit?: string) => {
       const propertyId = normalizePropertyId(explicit ?? config.defaultPropertyId!);
       assertPropertyAllowed(propertyId, config.access);
@@ -133,6 +135,15 @@ describe("runDiagnose", () => {
     expect((result.details as { ok: boolean }).ok).toBe(false);
     expect(result.markdown).toMatch(/Google credentials/);
     expect(client.listAccountSummaries).not.toHaveBeenCalled();
+  });
+
+  it("names which key file was used, for the stale-path case", async () => {
+    const { runtime } = stubRuntime({
+      summaries: SUMMARIES,
+      probes: [{ label: "GA4_CREDENTIALS (file)", path: "/keys/sa.json", status: "used" }],
+    });
+    const result = await runDiagnose(runtime, {});
+    expect(result.markdown).toContain("/keys/sa.json");
   });
 
   it("reuses runProperties for property discovery instead of listing them twice", async () => {
