@@ -1,17 +1,92 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { configFromEnv } from "../config.js";
-import type { Ga4Client, RunReportResponse } from "../ga4/client.js";
+import type { Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
+import { diagnose } from "../ga4/errors.js";
 import { normalizePropertyId } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
-import { COMMANDS, KNOWN_FLAGS } from "./args.js";
-import { EXIT } from "./exit.js";
+import { COMMANDS, KNOWN_FLAGS, UsageError } from "./args.js";
+import { EXIT, exitCodeFor } from "./exit.js";
 import { dispatch, main, VERSION, type CommandArgs } from "./main.js";
 
 function capture() {
   const out: string[] = [];
   const err: string[] = [];
   return { out, err, streams: { out: (s: string) => out.push(s), err: (s: string) => err.push(s) } };
+}
+
+type Recorded = { propertyId: string; request: RunReportRequest };
+
+/**
+ * A Ga4Runtime that never touches disk or the network: `client()`, `metadata()`
+ * and `userScopedCustomDimensions()` are all hand-written stubs, not the real
+ * implementations in src/runtime.ts, so nothing here can reach a real
+ * credential file or a real Google request no matter what is installed on the
+ * machine running the test. Modeled on the stubRuntime helpers already in
+ * src/tools/reports.test.ts and src/tools/discovery.test.ts. `calls` records
+ * every request built, so a test can inspect exactly what was sent rather than
+ * only whether something threw.
+ */
+function fakeRuntime(): { runtime: Ga4Runtime; calls: Recorded[] } {
+  const calls: Recorded[] = [];
+  const config = configFromEnv({ GA4_PROPERTY_ID: "123456789" });
+  const response: RunReportResponse = {
+    dimensionHeaders: [{ name: "pagePath" }],
+    metricHeaders: [{ name: "activeUsers", type: "TYPE_INTEGER" }],
+    rows: [{ dimensionValues: [{ value: "/x" }], metricValues: [{ value: "1" }] }],
+    rowCount: 1,
+  };
+  const client = {
+    runReport: async (propertyId: string, request: RunReportRequest) => {
+      calls.push({ propertyId, request });
+      return response;
+    },
+    runRealtimeReport: async (propertyId: string, request: RunReportRequest) => {
+      calls.push({ propertyId, request });
+      return response;
+    },
+    getMetadata: async () => ({ dimensions: [], metrics: [] }),
+    listAccountSummaries: async () => [],
+  } as unknown as Ga4Client;
+
+  const runtime: Ga4Runtime = {
+    config,
+    audit: { record: async () => {} },
+    client: async () => client,
+    principal: () => "reader@example.iam.gserviceaccount.com",
+    probes: () => [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
+    resolveProperty: (explicit) => normalizePropertyId(explicit ?? config.defaultPropertyId!),
+    metadata: async () => ({ dimensions: [], metrics: [] }),
+    userScopedCustomDimensions: async () => new Set<string>(),
+  };
+
+  return { runtime, calls };
+}
+
+/**
+ * Runs dispatch against a fakeRuntime() and reduces the outcome to an exit
+ * code the same way main()'s own catch block does. Used instead of main()
+ * itself whenever a test needs to get past property resolution: main() builds
+ * its runtime from real credential resolution (src/auth/credentials.ts falls
+ * back to the real home directory regardless of the env object a test passes
+ * in), so any test driving main() with a valid --property reaches
+ * runtime.client() and, on a machine with real Google Application Default
+ * Credentials on disk, makes a real network request. dispatch() with
+ * fakeRuntime() cannot do that: none of its methods ever resolve a real
+ * credential.
+ */
+async function dispatchExitCode(parsed: CommandArgs): Promise<{ code: number; err: string }> {
+  const { runtime } = fakeRuntime();
+  try {
+    await dispatch(runtime, parsed, {});
+    return { code: EXIT.OK, err: "" };
+  } catch (error) {
+    if (error instanceof UsageError) {
+      return { code: EXIT.BAD_INPUT, err: error.message };
+    }
+    const named = diagnose(error);
+    return { code: exitCodeFor(named), err: named.toString() };
+  }
 }
 
 describe("main", () => {
@@ -57,6 +132,15 @@ describe("client-side validation exits 2, not 1 or 4", () => {
   // unexpected broke" (exit 1). Before this fix they threw a plain Error,
   // which diagnose() could only classify as "UNEXPECTED", and exitCodeFor
   // maps that to exit 4.
+  //
+  // The first three below run through main() itself: each fails inside
+  // findPreset, before runtime.resolveProperty is ever called, so none of
+  // them can reach runtime.client() regardless of what credentials the
+  // machine running the test happens to have. The fourth needs a property to
+  // resolve successfully to reach the check under test, which would then
+  // reach runtime.client() through userScopedCustomDimensions if driven
+  // through main()'s real runtime, so it uses dispatch() with fakeRuntime()
+  // instead, exactly to avoid that.
   it("names an unknown preset on report and exits 2", async () => {
     const c = capture();
     const code = await main(["report", "not_a_real_preset"], {}, c.streams);
@@ -79,63 +163,94 @@ describe("client-side validation exits 2, not 1 or 4", () => {
   });
 
   it("names a report with no dimension to filter on and exits 2", async () => {
-    const c = capture();
     // "overview" is metrics-only; report presets are covered by
     // reports.test.ts, this only needs one with no dimension to filter.
-    // --property is required so the check under test (no dimension to filter
-    // on) is what actually fails, rather than property resolution failing
-    // first with no credentials configured.
-    const code = await main(
-      ["report", "overview", "--filter", "checkout", "--property", "123456789"],
-      {},
-      c.streams,
-    );
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "report",
+      positional: ["overview"],
+      flags: { filter: "checkout", property: "123456789" },
+    };
+    const { code, err } = await dispatchExitCode(parsed);
     expect(code).toBe(EXIT.BAD_INPUT);
-    expect(c.err.join("")).toContain("overview");
+    expect(err).toContain("overview");
   });
 });
 
 describe("query's --filter grammar: field:operator:value", () => {
   it("accepts a well-formed expression", async () => {
-    const c = capture();
-    const code = await main(
-      ["query", "--metrics", "activeUsers", "--filter", "country:exact:US", "--property", "123456789"],
-      {},
-      c.streams,
-    );
-    // A well-formed filter is never rejected as malformed. What fails next
-    // (no credentials configured, in this test) has nothing to do with
-    // --filter's syntax.
-    expect(code).toBe(EXIT.SETUP_INCOMPLETE);
-    expect(c.err.join("")).not.toContain("field:operator:value");
+    // Runs through dispatch() with fakeRuntime(), not main(): fakeRuntime()
+    // always succeeds, so this asserts the stronger and fully
+    // network-independent claim that a well-formed filter completes exit 0,
+    // rather than the weaker "not exit 2" a real main() run would be limited
+    // to (main()'s runtime resolves real credentials regardless of the env
+    // object a test passes in, so driving this scenario through main() with
+    // a --property that resolves can still reach runtime.client() and, on a
+    // machine with real Google Application Default Credentials on disk,
+    // issue a real request).
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "country:exact:US", property: "123456789" },
+    };
+    const { code, err } = await dispatchExitCode(parsed);
+    expect(code).toBe(EXIT.OK);
+    expect(err).toBe("");
+  });
+
+  it("keeps a value's own colon intact, as in a URL", async () => {
+    // pageLocation and pageReferrer are full URLs; filtering on one is
+    // ordinary, not an edge case. Runs through dispatch() with fakeRuntime()
+    // (not main()) specifically so the built request can be inspected
+    // directly, rather than inferring correctness from an exit code.
+    const { runtime, calls } = fakeRuntime();
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: {
+        metrics: "activeUsers",
+        filter: "pageLocation:contains:https://example.com/checkout",
+        property: "123456789",
+      },
+    };
+    await dispatch(runtime, parsed, {});
+    expect(calls[0]!.request.dimensionFilter).toEqual({
+      filter: {
+        fieldName: "pageLocation",
+        stringFilter: { matchType: "CONTAINS", value: "https://example.com/checkout", caseSensitive: false },
+      },
+    });
   });
 
   it("exits 2 naming an unknown operator", async () => {
-    const c = capture();
-    const code = await main(
-      ["query", "--metrics", "activeUsers", "--filter", "country:frobnicate:US", "--property", "123456789"],
-      {},
-      c.streams,
-    );
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "country:frobnicate:US", property: "123456789" },
+    };
+    const { code, err } = await dispatchExitCode(parsed);
     expect(code).toBe(EXIT.BAD_INPUT);
-    expect(c.err.join("")).toContain("frobnicate");
+    expect(err).toContain("frobnicate");
   });
 
-  it("exits 2 on too few segments", async () => {
+  it("exits 2 with no colon at all", async () => {
     const c = capture();
     const code = await main(["query", "--metrics", "activeUsers", "--filter", "country"], {}, c.streams);
     expect(code).toBe(EXIT.BAD_INPUT);
     expect(c.err.join("")).toContain("field:operator:value");
   });
 
-  it("exits 2 on too many segments", async () => {
+  it("exits 2 on an empty field", async () => {
     const c = capture();
-    const code = await main(["query", "--metrics", "activeUsers", "--filter", "a:b:c:d"], {}, c.streams);
+    const code = await main(["query", "--metrics", "activeUsers", "--filter", ":exact:US"], {}, c.streams);
     expect(code).toBe(EXIT.BAD_INPUT);
     expect(c.err.join("")).toContain("field:operator:value");
   });
 
-  it("exits 2 on an empty segment", async () => {
+  it("exits 2 on an empty operator", async () => {
     const c = capture();
     const code = await main(["query", "--metrics", "activeUsers", "--filter", "country::US"], {}, c.streams);
     expect(code).toBe(EXIT.BAD_INPUT);
@@ -153,39 +268,6 @@ describe("VERSION", () => {
     expect(VERSION).toBe(pkg.version);
   });
 });
-
-/**
- * A minimal Ga4Runtime that lets every command's happy path get far enough
- * for dispatch to build its parameter object and call the operation, without
- * a real credential or network access. Modeled on the stubRuntime helpers in
- * src/tools/reports.test.ts and src/tools/discovery.test.ts.
- */
-function fakeRuntime(): Ga4Runtime {
-  const config = configFromEnv({ GA4_PROPERTY_ID: "123456789" });
-  const response: RunReportResponse = {
-    dimensionHeaders: [{ name: "pagePath" }],
-    metricHeaders: [{ name: "activeUsers", type: "TYPE_INTEGER" }],
-    rows: [{ dimensionValues: [{ value: "/x" }], metricValues: [{ value: "1" }] }],
-    rowCount: 1,
-  };
-  const client = {
-    runReport: async () => response,
-    runRealtimeReport: async () => response,
-    getMetadata: async () => ({ dimensions: [], metrics: [] }),
-    listAccountSummaries: async () => [],
-  } as unknown as Ga4Client;
-
-  return {
-    config,
-    audit: { record: async () => {} },
-    client: async () => client,
-    principal: () => "reader@example.iam.gserviceaccount.com",
-    probes: () => [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
-    resolveProperty: (explicit) => normalizePropertyId(explicit ?? config.defaultPropertyId!),
-    metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
-  };
-}
 
 describe("every KNOWN_FLAGS entry reaches a real field", () => {
   // "json" is a deliberate exception: it selects markdown vs JSON output in
@@ -248,7 +330,8 @@ describe("every KNOWN_FLAGS entry reaches a real field", () => {
       };
 
       try {
-        await dispatch(fakeRuntime(), parsed, {});
+        const { runtime } = fakeRuntime();
+        await dispatch(runtime, parsed, {});
       } catch {
         // Only whether each flag was *read* while building the parameter
         // object matters here; a fake network or an unmatched preset id

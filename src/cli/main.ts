@@ -30,8 +30,9 @@ Commands:
   fields <search>            Search the property's live field catalog
   properties                 List the properties this credential can read
 
-query's --filter is one condition, exactly field:operator:value (for example
-country:exact:US; no colon inside field, operator or value). Operators:
+query's --filter is one condition, field:operator:value (for example
+country:exact:US). Only the first two colons matter, so a value may contain
+its own, as in pageLocation:contains:https://example.com/checkout. Operators:
 ${FILTER_OPERATORS.join(", ")}.
 
 Run a command with --help for its options.
@@ -130,31 +131,38 @@ function kindFlag(flags: Flags): "any" | "dimension" | "metric" | undefined {
 }
 
 /**
- * query's --filter is one condition, exactly three colon-separated segments:
- * `field:operator:value` (for example `country:exact:US`; operators are
- * listed in FILTER_OPERATORS and repeated in the USAGE text). Anything with
- * fewer or more than three segments, or an empty one, is rejected rather than
- * guessed at: a value cannot itself contain a colon, since GA4 dimension and
- * metric values essentially never do (country names, page paths, event
- * names), and silently taking "the first two colons" as the split would make
- * a typo (an extra colon) parse into the wrong field or value instead of
- * raising.
+ * query's --filter is one condition, `field:operator:value` (for example
+ * `country:exact:US`). Only the first two colons are significant: field is
+ * everything before the first, operator is everything between the first and
+ * second, and value is everything after the second, colons and all. This
+ * matters because pageLocation and pageReferrer are full URLs, and filtering
+ * on one (`pageLocation:contains:https://example.com/checkout`) is ordinary,
+ * not an edge case; truncating the value at its own colon would silently
+ * misread the request rather than raise.
+ *
+ * A field or an operator cannot themselves contain a colon (there is no
+ * legitimate reason for either to), so a missing colon still raises, and the
+ * operator is checked against FILTER_OPERATORS here rather than left for
+ * buildFilters downstream, so a typo like `a:b:c:d` is rejected for the real
+ * reason, an unknown operator (`b`), naming the valid ones, rather than a
+ * generic "too many segments" that does not exist as a concept once the value
+ * itself is unbounded.
  */
 function filterFlag(flags: Flags): FilterCondition[] | undefined {
   const raw = str(flags, "filter");
   if (raw === undefined) return undefined;
-  const parts = raw.split(":");
-  if (parts.length !== 3 || parts.some((part) => part.length === 0)) {
+  const first = raw.indexOf(":");
+  const second = first === -1 ? -1 : raw.indexOf(":", first + 1);
+  const field = first === -1 ? "" : raw.slice(0, first);
+  const op = second === -1 ? "" : raw.slice(first + 1, second);
+
+  if (field === "" || !(FILTER_OPERATORS as readonly string[]).includes(op)) {
     throw new UsageError(
-      `--filter must be exactly field:operator:value (got ${JSON.stringify(raw)}). Operators: ` +
+      `--filter must look like field:operator:value (got ${JSON.stringify(raw)}). Operators: ` +
         `${FILTER_OPERATORS.join(", ")}.`,
     );
   }
-  return [{
-    field: parts[0]!,
-    op: parts[1]! as FilterOperator,
-    value: parts[2]!,
-  }];
+  return [{ field, op: op as FilterOperator, value: raw.slice(second + 1) }];
 }
 
 /** The first positional argument, or a UsageError pointing at a worked example. */
