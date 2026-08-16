@@ -1,19 +1,25 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
-import { configSchema } from "./config.js";
-import { TOOL_NAMES } from "./index.js";
 import { PRESETS } from "./ga4/presets.js";
 import { ALLOWED_HOSTS } from "./ga4/http.js";
 
 /**
  * Documentation is part of the product here, and a false sentence in it costs
- * more than a bug. These tests keep the prose honest mechanically: a config
- * example that the schema would reject, a tool that does not exist, or a host
- * that is not on the allowlist all fail the build.
+ * more than a bug. These tests keep the prose honest mechanically: a preset
+ * that does not exist, or a host that is not on the allowlist, fails the
+ * build.
+ *
+ * Two checks that used to live here are gone for now, not forgotten: a
+ * `plugins.entries.ga4.config` example validated against the plugin's config
+ * schema, and a `ga4_` tool name checked against the registered tool list.
+ * Both concepts belonged to the plugin, which this project is no longer.
+ * Task 10 restores the equivalent coverage for a skill: that no documentation
+ * contains a `plugins.entries` block at all, and that every documented
+ * environment variable and command name is one the code actually reads or
+ * registers.
  */
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -50,52 +56,9 @@ describe("documented JSON", () => {
     }
     expect(broken).toEqual([]);
   });
-
-  it("would be accepted by the plugin's own config schema", async () => {
-    const rejected: string[] = [];
-
-    for (const { file, text } of await readDocs()) {
-      for (const block of jsonBlocks(text)) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(block.body);
-        } catch {
-          continue; // covered by the test above
-        }
-        const config = (
-          parsed as { plugins?: { entries?: { ga4?: { config?: unknown } } } }
-        )?.plugins?.entries?.ga4?.config;
-        if (config === undefined) {
-          continue;
-        }
-        if (!Value.Check(configSchema, config)) {
-          // typebox 1.3 reports `instancePath`; there is no `path` field.
-          const problems = [...Value.Errors(configSchema, config)]
-            .map((issue) => `${issue.instancePath || "(root)"}: ${issue.message}`)
-            .join("; ");
-          rejected.push(`${file}:${block.line}: ${problems}`);
-        }
-      }
-    }
-
-    expect(rejected).toEqual([]);
-  });
 });
 
 describe("documented identifiers", () => {
-  it("names no ga4_ tool that does not exist", async () => {
-    const known = new Set<string>(TOOL_NAMES);
-    const offenders: string[] = [];
-    for (const { file, text } of await readDocs()) {
-      for (const match of text.matchAll(/\bga4_[a-z_]+\b/g)) {
-        if (!known.has(match[0])) {
-          offenders.push(`${file}: ${match[0]}`);
-        }
-      }
-    }
-    expect([...new Set(offenders)]).toEqual([]);
-  });
-
   it("names no preset that does not exist", async () => {
     const known = new Set(PRESETS.map((preset) => preset.id));
     // Only check inside backticks, so ordinary prose is not misread as an id.
@@ -162,39 +125,6 @@ describe("the privacy documentation", () => {
   });
 });
 
-describe("the source", () => {
-  /**
-   * Six error messages once told users to "run ga4_properties", a tool that was
-   * designed early, folded into ga4_diagnose, and never existed. They were the
-   * messages for the two most common setup failures, so the two people most in
-   * need of help were sent to a dead end. This makes that a build failure.
-   */
-  it("never tells a user to run a ga4_ tool that is not registered", async () => {
-    const known = new Set<string>(TOOL_NAMES);
-    const { readdir } = await import("node:fs/promises");
-    const offenders: string[] = [];
-
-    async function walk(dir: string): Promise<void> {
-      for (const entry of await readdir(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-          const text = await readFile(full, "utf8");
-          for (const match of text.matchAll(/\bga4_[a-z_]+\b/g)) {
-            if (!known.has(match[0])) {
-              offenders.push(`${path.relative(repoRoot, full)}: ${match[0]}`);
-            }
-          }
-        }
-      }
-    }
-
-    await walk(path.join(repoRoot, "src"));
-    expect([...new Set(offenders)]).toEqual([]);
-  });
-});
-
 describe("project identity", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
     name: string;
@@ -224,5 +154,42 @@ describe("project identity", () => {
     for (const file of ["README.md", "SETUP.md", "PRIVACY.md", "SECURITY.md", "CONTRIBUTING.md"]) {
       expect(readFileSync(file, "utf8")).not.toContain("openclaw-plugin-ga4");
     }
+  });
+});
+
+/** Every `.ts` file under `dir`, recursed into subdirectories. */
+function listTsFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...listTsFiles(full));
+    } else if (entry.name.endsWith(".ts")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+describe("runtime dependencies", () => {
+  it("ships no runtime dependencies", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as Record<string, unknown>;
+    expect(pkg.dependencies ?? {}).toEqual({});
+    expect(pkg.peerDependencies ?? {}).toEqual({});
+  });
+
+  it("imports nothing outside node: builtins", () => {
+    const files = listTsFiles(path.join(repoRoot, "src")).filter((file) => !file.endsWith(".test.ts"));
+    const offenders: string[] = [];
+    for (const file of files) {
+      for (const match of readFileSync(file, "utf8").matchAll(/from\s+["']([^"']+)["']/g)) {
+        const spec = match[1]!;
+        if (spec.startsWith(".") || spec.startsWith("node:")) {
+          continue;
+        }
+        offenders.push(`${path.relative(repoRoot, file)}: ${spec}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

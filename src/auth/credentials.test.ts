@@ -1,3 +1,6 @@
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applicationDefaultCredentialsPath,
@@ -72,21 +75,6 @@ describe("applicationDefaultCredentialsPath", () => {
 });
 
 describe("resolveCredentials", () => {
-  it("prefers the configured path over everything else", async () => {
-    const result = await resolveCredentials({
-      configuredPath: "/keys/sa.json",
-      env: { GOOGLE_APPLICATION_CREDENTIALS: "/env/sa.json" },
-      home: "/home/ada",
-      readFileImpl: async (filePath) => {
-        expect(filePath).toBe("/keys/sa.json");
-        return SERVICE_ACCOUNT;
-      },
-    });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("unreachable");
-    expect(result.credential.source).toBe("plugin config (credentials)");
-  });
-
   it("falls back to GOOGLE_APPLICATION_CREDENTIALS", async () => {
     const result = await resolveCredentials({
       env: { GOOGLE_APPLICATION_CREDENTIALS: "/env/sa.json" },
@@ -112,32 +100,6 @@ describe("resolveCredentials", () => {
     expect(result.credential.kind).toBe("authorized_user");
   });
 
-  it("expands a leading tilde in a configured path", async () => {
-    const seen: string[] = [];
-    await resolveCredentials({
-      configuredPath: "~/keys/sa.json",
-      env: {},
-      home: "/home/ada",
-      readFileImpl: async (filePath) => {
-        seen.push(filePath);
-        return notFound();
-      },
-    });
-    expect(seen[0]).toBe("/home/ada/keys/sa.json");
-  });
-
-  it("keeps trying after an invalid file rather than giving up", async () => {
-    const result = await resolveCredentials({
-      configuredPath: "/keys/broken.json",
-      env: {},
-      home: "/home/ada",
-      readFileImpl: async (filePath) =>
-        filePath === "/keys/broken.json" ? "{oops" : AUTHORIZED_USER,
-    });
-    expect(result.ok).toBe(true);
-    expect(result.probes.map((probe) => probe.status)).toEqual(["invalid", "used"]);
-  });
-
   it("reports every location it checked when nothing is found", async () => {
     const result = await resolveCredentials({
       env: {},
@@ -151,14 +113,194 @@ describe("resolveCredentials", () => {
       status: "absent",
     });
   });
+});
 
-  it("never puts key material into a probe", async () => {
+describe("GA4_CREDENTIALS", () => {
+  const PASTED_SERVICE_ACCOUNT = JSON.stringify({
+    type: "service_account",
+    project_id: "demo",
+    private_key_id: "kid",
+    private_key: "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n",
+    client_email: "reader@demo.iam.gserviceaccount.com",
+    token_uri: "https://oauth2.googleapis.com/token",
+  });
+
+  it("accepts the key's contents inline", async () => {
+    const result = await resolveCredentials({ env: { GA4_CREDENTIALS: PASTED_SERVICE_ACCOUNT } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.credential.kind).toBe("service_account");
+    if (result.credential.kind !== "service_account") throw new Error("unreachable");
+    expect(result.credential.account.clientEmail).toBe("reader@demo.iam.gserviceaccount.com");
+  });
+
+  it("tolerates leading whitespace before the opening brace", async () => {
     const result = await resolveCredentials({
-      configuredPath: "/keys/sa.json",
-      env: {},
+      env: { GA4_CREDENTIALS: `\n  ${PASTED_SERVICE_ACCOUNT}` },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a path when the value is not JSON", async () => {
+    const file = join(tmpdir(), `open-ga4-${process.pid}.json`);
+    writeFileSync(file, PASTED_SERVICE_ACCOUNT);
+    try {
+      const result = await resolveCredentials({ env: { GA4_CREDENTIALS: file } });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // No readFileImpl or home override here, so a failure would fall
+      // through to the real ~/.config/gcloud/application_default_credentials.json
+      // on whatever machine runs this test. Pinning the source is what
+      // catches that: without it, this test would pass regardless of
+      // whether GA4_CREDENTIALS was consulted at all on a machine that
+      // happens to have real gcloud ADC set up, which describes most
+      // machines used to develop this file.
+      expect(result.credential.source).toBe("GA4_CREDENTIALS (file)");
+    } finally {
+      rmSync(file, { force: true });
+    }
+  });
+
+  it("reports malformed inline JSON without echoing the value", async () => {
+    // An unquoted value, not just an unterminated string: V8's JSON.parse
+    // embeds a text excerpt around the offending token for this shape of
+    // syntax error ("Unexpected token 's', ...'ate_key: secretvalue'..." or
+    // similar), unlike an unterminated string, whose message is position-only
+    // and never repeats the source text. This fixture is chosen so a test
+    // that stopped redacting would actually fail here.
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: '{"private_key": secretvalue}' },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const probe = result.probes.find((p) => p.label.startsWith("GA4_CREDENTIALS"));
+    expect(probe?.status).toBe("invalid");
+    expect(JSON.stringify(result.probes)).not.toContain("secret");
+  });
+
+  it("takes priority over GOOGLE_APPLICATION_CREDENTIALS", async () => {
+    const result = await resolveCredentials({
+      env: {
+        GA4_CREDENTIALS: PASTED_SERVICE_ACCOUNT,
+        GOOGLE_APPLICATION_CREDENTIALS: "/nonexistent.json",
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.probes[0]?.label).toContain("GA4_CREDENTIALS");
+  });
+
+  // Relocated from resolveCredentials's now-removed configuredPath option.
+  // GA4_CREDENTIALS given a path is the reachable equivalent: an explicitly
+  // supplied location that outranks GOOGLE_APPLICATION_CREDENTIALS.
+  it("prefers a GA4_CREDENTIALS path over GOOGLE_APPLICATION_CREDENTIALS", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json", GOOGLE_APPLICATION_CREDENTIALS: "/env/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        expect(filePath).toBe("/keys/sa.json");
+        return SERVICE_ACCOUNT;
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.credential.source).toBe("GA4_CREDENTIALS (file)");
+    // Pins the ordering itself, not just the eventual winner: the mock's own
+    // expect() throws for any other path, but that throw is swallowed by
+    // resolveCredentials's own try/catch and recorded as an "unreadable"
+    // probe, so without this the test would still pass even if
+    // GA4_CREDENTIALS were tried last rather than first.
+    expect(result.probes[0]?.label).toBe("GA4_CREDENTIALS (file)");
+  });
+
+  it("expands a leading tilde in a GA4_CREDENTIALS path", async () => {
+    const seen: string[] = [];
+    await resolveCredentials({
+      env: { GA4_CREDENTIALS: "~/keys/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        seen.push(filePath);
+        return notFound();
+      },
+    });
+    expect(seen[0]).toBe("/home/ada/keys/sa.json");
+  });
+
+  it("keeps trying after an invalid GA4_CREDENTIALS file rather than giving up", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/broken.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) =>
+        filePath === "/keys/broken.json" ? "{oops" : AUTHORIZED_USER,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.probes.map((probe) => probe.status)).toEqual(["invalid", "used"]);
+  });
+
+  it("never puts key material into a probe for a GA4_CREDENTIALS path", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json" },
       home: "/home/ada",
       readFileImpl: async () => SERVICE_ACCOUNT,
     });
     expect(JSON.stringify(result.probes)).not.toContain("PRIVATE KEY");
   });
+
+  // The file route shares parseCredentialFile with the pasted route, but
+  // builds its probe through a different code path in resolveCredentials (the
+  // candidates loop, not the inline branch), so it is checked on its own
+  // rather than assumed from the pasted-key test above. A user can just as
+  // easily point GA4_CREDENTIALS at a malformed key file as paste one in.
+  it("reports a malformed GA4_CREDENTIALS file without echoing its contents", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/broken.json" },
+      home: "/home/ada",
+      readFileImpl: async () => '{"private_key": secretvalue}',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const probe = result.probes.find((p) => p.label === "GA4_CREDENTIALS (file)");
+    expect(probe?.status).toBe("invalid");
+    expect(JSON.stringify(result.probes)).not.toContain("secret");
+  });
+
+  it("does not echo a pasted key that was mistaken for a path", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: `'${PASTED_SERVICE_ACCOUNT}` },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        throw Object.assign(new Error(`ENAMETOOLONG: name too long, open '${filePath}'`), {
+          code: "ENAMETOOLONG",
+        });
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result.probes)).not.toContain("PRIVATE KEY");
+  });
+
+  // The fixture above contains "PRIVATE KEY" and so is refused before any
+  // read is attempted, regardless of which errno a real filesystem would
+  // raise. These two exercise the other, independent layer: a value that
+  // does look like a plausible path (short, no newline, no PRIVATE KEY) but
+  // still causes a non-ENOENT read failure whose message would otherwise
+  // repeat it verbatim. Node embeds the attempted path in the errno message
+  // for EACCES and ENOTDIR exactly as it does for ENAMETOOLONG.
+  it.each(["EACCES", "ENOTDIR"] as const)(
+    "does not echo the read error's message for %s",
+    async (code) => {
+      const result = await resolveCredentials({
+        env: { GA4_CREDENTIALS: "/keys/sa.json" },
+        home: "/home/ada",
+        readFileImpl: async (filePath) => {
+          throw Object.assign(
+            new Error(`${code}: some-operating-system-detail, open '${filePath}BASE64BLOBSECRET'`),
+            { code },
+          );
+        },
+      });
+      expect(result.ok).toBe(false);
+      expect(JSON.stringify(result.probes)).not.toContain("BASE64BLOBSECRET");
+      expect(JSON.stringify(result.probes)).not.toContain("some-operating-system-detail");
+    },
+  );
 });

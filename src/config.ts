@@ -1,97 +1,16 @@
-import { Type, type Static } from "typebox";
 import { DEFAULT_KEPT_QUERY_PARAMS, type RedactionOptions } from "./privacy/redact.js";
 import { DEFAULT_ACCESS_POLICY, type AccessPolicy } from "./privacy/policy.js";
 import { LIMITS } from "./ga4/limits.js";
 
 /**
- * Plugin configuration, as it appears under
- * `plugins.entries.ga4.config` in `openclaw.json`.
+ * Settings, resolved from the environment.
  *
- * Everything is optional. With no configuration at all the plugin still works
- * if `GOOGLE_APPLICATION_CREDENTIALS` is set or gcloud application-default
- * credentials exist, which is the common case for anyone who has used another
- * Google tool on this machine.
+ * Everything here is read from the process environment and never from argv.
+ * That is deliberate for the four privacy settings: a command-line flag can be
+ * set by the model, and a page title is attacker-controlled text that reaches
+ * the model. An environment variable is set by a person.
  */
-export const configSchema = Type.Object(
-  {
-    credentials: Type.Optional(
-      Type.String({
-        description:
-          "Path to a Google service-account JSON key file. Falls back to " +
-          "GOOGLE_APPLICATION_CREDENTIALS, then to gcloud application-default credentials.",
-      }),
-    ),
-    propertyId: Type.Optional(
-      Type.String({
-        description:
-          "Default GA4 property id: the numeric one, not the G-XXXXXXX measurement id. " +
-          "Tools take a property_id argument that overrides this.",
-      }),
-    ),
-    defaultRowLimit: Type.Optional(
-      Type.Integer({
-        minimum: 1,
-        maximum: LIMITS.MAX_ROWS,
-        description: `Rows returned when a tool does not specify. Defaults to ${LIMITS.DEFAULT_ROWS}.`,
-      }),
-    ),
-    privacy: Type.Optional(
-      Type.Object(
-        {
-          redact: Type.Optional(
-            Type.Boolean({
-              description:
-                "Mask emails, tokens, ids and unsafe query-parameter values in dimension " +
-                "values before the model sees them. On by default. Turning this off is not " +
-                "recommended.",
-            }),
-          ),
-          keepQueryParams: Type.Optional(
-            Type.Array(Type.String(), {
-              description:
-                "Query-parameter names whose values survive redaction. Defaults to the common " +
-                "marketing and search parameters.",
-            }),
-          ),
-          extraRedactionPatterns: Type.Optional(
-            Type.Array(Type.String(), {
-              description:
-                "Additional regular expressions to mask, for identifiers specific to your site " +
-                "(for example an employee or order reference format).",
-            }),
-          ),
-          allowUserIdentifyingDimensions: Type.Optional(
-            Type.Boolean({
-              description:
-                "Permit dimensions that identify individual people (userId, customUser:*). " +
-                "Off by default.",
-            }),
-          ),
-          propertyAllowlist: Type.Optional(
-            Type.Array(Type.String(), {
-              description:
-                "When set, only these property ids may be queried. Empty means no restriction.",
-            }),
-          ),
-          auditLogPath: Type.Optional(
-            Type.String({
-              description:
-                "Append a line per API call (time, property, tool, fields) to this file. " +
-                "Off by default. Never records response data.",
-            }),
-          ),
-        },
-        { additionalProperties: false },
-      ),
-    ),
-  },
-  { additionalProperties: false },
-);
-
-export type Ga4PluginConfig = Static<typeof configSchema>;
-
 export type ResolvedConfig = {
-  credentialsPath?: string;
   defaultPropertyId?: string;
   defaultRowLimit: number;
   redaction: RedactionOptions;
@@ -99,45 +18,49 @@ export type ResolvedConfig = {
   auditLogPath?: string;
 };
 
-/**
- * Turn raw config into the shapes the rest of the plugin uses.
- *
- * Invalid user-supplied regular expressions are dropped with a warning rather
- * than crashing the plugin: a typo in an optional privacy pattern should not
- * take analytics offline.
- */
-export function resolveConfig(
-  raw: Ga4PluginConfig | undefined,
+/** True only for "1", "true", "yes" and "on", case-insensitively. */
+function isTrue(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+/** False only for "0", "false", "no" and "off". Anything else leaves the default. */
+function isFalse(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  return ["0", "false", "no", "off"].includes(value.trim().toLowerCase());
+}
+
+export function configFromEnv(
+  env: NodeJS.ProcessEnv,
   onWarning?: (message: string) => void,
 ): ResolvedConfig {
-  const privacy = raw?.privacy ?? {};
-
-  const extraPatterns: RegExp[] = [];
-  for (const source of privacy.extraRedactionPatterns ?? []) {
-    try {
-      extraPatterns.push(new RegExp(source, "g"));
-    } catch (error) {
+  const allowlist: string[] = [];
+  for (const raw of (env.GA4_PROPERTY_ALLOWLIST ?? "").split(",")) {
+    const id = raw.trim();
+    if (id === "") continue;
+    if (!/^[0-9]+$/.test(id)) {
       onWarning?.(
-        `Ignoring privacy.extraRedactionPatterns entry ${JSON.stringify(source)}: ` +
-          `${error instanceof Error ? error.message : String(error)}`,
+        `Ignoring GA4_PROPERTY_ALLOWLIST entry ${JSON.stringify(id)}: a property id is the ` +
+          "9 or 10 digit number from Admin > Property details, not the G-XXXXXXXXXX measurement id.",
       );
+      continue;
     }
+    allowlist.push(id);
   }
 
   return {
-    credentialsPath: raw?.credentials,
-    defaultPropertyId: raw?.propertyId,
-    defaultRowLimit: raw?.defaultRowLimit ?? LIMITS.DEFAULT_ROWS,
+    defaultPropertyId: env.GA4_PROPERTY_ID?.trim() || undefined,
+    defaultRowLimit: LIMITS.DEFAULT_ROWS,
     redaction: {
-      enabled: privacy.redact ?? true,
-      keepQueryParams: privacy.keepQueryParams ?? DEFAULT_KEPT_QUERY_PARAMS,
-      extraPatterns,
+      enabled: !isFalse(env.GA4_REDACT),
+      keepQueryParams: DEFAULT_KEPT_QUERY_PARAMS,
+      extraPatterns: [],
     },
     access: {
       ...DEFAULT_ACCESS_POLICY,
-      allowUserIdentifyingDimensions: privacy.allowUserIdentifyingDimensions ?? false,
-      propertyAllowlist: privacy.propertyAllowlist ?? [],
+      allowUserIdentifyingDimensions: isTrue(env.GA4_ALLOW_USER_DIMENSIONS),
+      propertyAllowlist: allowlist,
     },
-    auditLogPath: privacy.auditLogPath,
+    auditLogPath: env.GA4_AUDIT_LOG?.trim() || undefined,
   };
 }
