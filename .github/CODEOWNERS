@@ -85,6 +85,14 @@
 /LICENSE                        @anatoli-iliev
 /SECURITY.md                    @anatoli-iliev
 
+# The skill contract the agent reads, and the command line it drives.
+/SKILL.md                       @anatoli-iliev
+/src/cli/                       @anatoli-iliev
+/src/setup/                     @anatoli-iliev
+
+# Generated, never hand-edited. CI fails on any drift from src/.
+/lib/                           @anatoli-iliev
+
 # ---------------------------------------------------------------------------
 # This file.
 # ---------------------------------------------------------------------------

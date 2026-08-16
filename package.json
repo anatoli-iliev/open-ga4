@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-plugin-ga4",
+  "name": "open-ga4",
   "version": "0.1.0",
-  "description": "Read-only, privacy-respecting Google Analytics 4 access for OpenClaw agents.",
+  "description": "Open GA4: read-only, privacy-respecting Google Analytics 4 answers for an OpenClaw agent.",
   "keywords": [
     "openclaw",
     "openclaw-plugin",
@@ -10,16 +10,17 @@
     "analytics",
     "privacy"
   ],
-  "license": "MIT",
+  "license": "MIT-0",
   "author": "Anatoli Iliev <anatoli@helphabit.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anatoli-iliev/openclaw-plugin-ga4.git"
+    "url": "git+https://github.com/anatoli-iliev/open-ga4.git"
   },
-  "homepage": "https://github.com/anatoli-iliev/openclaw-plugin-ga4#readme",
+  "homepage": "https://github.com/anatoli-iliev/open-ga4#readme",
   "bugs": {
-    "url": "https://github.com/anatoli-iliev/openclaw-plugin-ga4/issues"
+    "url": "https://github.com/anatoli-iliev/open-ga4/issues"
   },
+  "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.22.3"

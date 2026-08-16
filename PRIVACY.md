@@ -1,4 +1,4 @@
-# Privacy behaviour of `openclaw-plugin-ga4`
+# Privacy behaviour of `open-ga4`
 
 ## 1. What this document is
 
@@ -46,13 +46,13 @@ not followed: `guardedFetch` passes `redirect: "error"`, because the allowlist i
 checked once, before the request, and a 302 would otherwise carry it to a host that
 was never checked.
 
-**Caveat.** The plugin uses the `fetch` it is given. If OpenClaw is configured with
+**Caveat.** The skill uses the `fetch` it is given. If OpenClaw is configured with
 an HTTP proxy, or your machine has a TLS-intercepting middlebox, this traffic
 traverses it exactly as all other OpenClaw traffic does. The allowlist constrains
-which host the plugin asks for, not what your OS and your OpenClaw configuration
+which host the skill asks for, not what your OS and your OpenClaw configuration
 then do with the request.
 
-## 3. What this plugin cannot do
+## 3. What this skill cannot do
 
 **Write to Google Analytics.** The only scope requested is
 `https://www.googleapis.com/auth/analytics.readonly`, defined once in
@@ -66,7 +66,7 @@ Google surface used: `runReport`, `runRealtimeReport`, `getMetadata`,
 one hand-written file; there is no generated SDK where an update could quietly
 introduce `deleteProperty`.
 
-**Call the audience-export or access-report endpoints.** The plugin never calls
+**Call the audience-export or access-report endpoints.** The skill never calls
 `properties.audienceExports`, `properties.audienceLists`, or the Admin API's
 `runAccessReport`, and `src/privacy/surface.test.ts` walks every `.js` file in
 `dist/` asserting the strings `audienceExport`, `audienceList`, `runAccessReport`
@@ -74,7 +74,7 @@ and `userDataRetention` do not appear.
 
 That test is the whole claim, and it is deliberately narrower than "cannot read
 per-user data". It checks four strings in the built bundle; it proves nothing about
-rows. `runReport`, which the plugin does call, returns a row per person the moment a
+rows. `runReport`, which the skill does call, returns a row per person the moment a
 `userId` dimension is used. That is why section 5 refuses that dimension by default
 rather than leaning on this test.
 
@@ -143,7 +143,7 @@ there is no switch.
 `src/privacy/policy.ts` refuses certain *questions* before a request is spent. Blocked
 by default: `userId`, `signedInWithUserId`, and any dimension whose name begins
 `customUser:`, the prefix GA4 gives user-scoped custom dimensions, so one created on
-your property after this plugin shipped is blocked too, with no plugin update.
+your property after this skill shipped is blocked too, with no skill update.
 
 `src/runtime.ts` also reads the property's live metadata and hands `classifyDimension`
 the custom definitions it finds there. That set is filtered to the same `customUser:`
@@ -195,7 +195,7 @@ Nothing.
 contains `writeFile`, `appendFile`, `createWriteStream` or `mkdir`.
 
 **The audit log is the one exception, and it is off by default.** Set
-`plugins.entries.ga4.config.privacy.auditLogPath` and the plugin appends one JSON line
+`plugins.entries.ga4.config.privacy.auditLogPath` and the skill appends one JSON line
 per report the agent runs (`ga4_report`, `ga4_compare`, `ga4_realtime` and `ga4_query`),
 recording the time, the property id, the tool name, the dimensions and metrics asked
 for, the date range, and how many rows came back. It records no response bodies, no row
@@ -205,7 +205,7 @@ discovery, and `ga4_diagnose` does run one live `activeUsers` query as its Data 
 check, so if you need a record of every Data API call this file is not it.
 
 It exists so you can answer "what did the agent look at last Tuesday" without keeping
-the data itself. If the file cannot be written the plugin warns and continues, because
+the data itself. If the file cannot be written the skill warns and continues, because
 losing a log line is a smaller failure than losing the answer.
 
 ## 7. The limits of these guarantees
@@ -217,21 +217,21 @@ cover the following, and no amount of code in this repository could.
   context and is sent to whatever model provider you configured OpenClaw to use, under
   that provider's terms, not ours. Redaction reduces what is in those rows; it does not
   keep them off the wire. Returning data to the model *is* the feature. If your threat
-  model excludes your model provider, this plugin does not change that calculus.
+  model excludes your model provider, this skill does not change that calculus.
 - **Aggregate data can still identify people.** "One session, from Reykjavík, on an
   iPhone, that hit `/careers/apply`" is not anonymous in a small enough cohort, and no
   pattern can fix it, because every individual field is innocuous.
 - **Redaction is pattern-based and will miss things.** It does not catch a name in a
   page title, a 20-character internal reference with no digits, a birthdate, or a
   format invented at your company last month. `privacy.extraRedactionPatterns` exists
-  for exactly that, and using it is your job; the plugin does not know what your
+  for exactly that, and using it is your job; the skill does not know what your
   identifiers look like.
 - **Google's thresholding is Google's.** When Google withholds rows covering very few
-  users, the plugin surfaces that as a caveat and tells you to read the totals as lower
+  users, the skill surfaces that as a caveat and tells you to read the totals as lower
   bounds. It cannot say which rows were withheld or how many, because Google does not,
   and it cannot turn the behaviour on or off.
 - **Redaction does not change what Google holds.** Masking happens on the way out of
-  the plugin, on data Google already stored. If your site sends emails to GA4 in a URL,
+  the skill, on data Google already stored. If your site sends emails to GA4 in a URL,
   that is still true after you install this; the fix is on your site.
 - **Visitor-authored values are attacker-controlled input.** Anyone can make a string
   appear in tomorrow's `pagePath` report by visiting a URL on your site. Framing rows
@@ -284,7 +284,7 @@ npm ls --omit=dev --all
 ```
 
 The last command prints one dependency, `typebox`, with nothing under it. That is the
-point of the dependency policy: auditing this plugin's network and data behaviour is a
+point of the dependency policy: auditing this skill's network and data behaviour is a
 morning's reading, not a supply-chain investigation.
 
 ---
@@ -292,4 +292,4 @@ morning's reading, not a supply-chain investigation.
 Not affiliated with, endorsed by, or sponsored by Google. Google Analytics and GA4 are
 trademarks of Google LLC.
 
-MIT licensed. Copyright 2026 Anatoli Iliev <anatoli@helphabit.com>.
+MIT-0 (MIT No Attribution) licensed. Copyright 2026 Anatoli Iliev <anatoli@helphabit.com>.

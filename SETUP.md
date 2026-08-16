@@ -9,7 +9,7 @@ You will do work in two different Google products. They look related. They are n
 - **Google Cloud Console**: where you create a robot account and switch on two APIs.
 - **Google Analytics**: where you grant that robot account permission to read your data.
 
-Doing one and not the other is the single most common reason this plugin does not work.
+Doing one and not the other is the single most common reason this skill does not work.
 
 ---
 
@@ -84,7 +84,7 @@ returns "not enabled" for the first few requests.
 ## Step 3. Create a service account
 
 A service account is a robot Google account with its own email address. It is what the
-plugin logs in as, so that it never touches your personal Google login.
+skill logs in as, so that it never touches your personal Google login.
 
 1. Open <https://console.cloud.google.com/iam-admin/serviceaccounts/create>
 2. Confirm the project picker says **openclaw-ga4**.
@@ -185,7 +185,7 @@ sufficient permissions", with no hint about which user, which property, or where
 8. **Untick "Notify new users by email".** A service account has no inbox; leaving it ticked
    generates a bounce.
 9. Under **Direct roles and data restrictions**, select **Viewer**. Select nothing else. Not
-   Editor, not Marketer, not Analyst, not Administrator. This plugin only reads, and a
+   Editor, not Marketer, not Analyst, not Administrator. This skill only reads, and a
    credential that can write is a credential that can be made to write.
 10. Click **Add** at the top right.
 
@@ -207,12 +207,12 @@ The property ID is also in the URL of any Analytics report, as the part that loo
 **It is not the `G-XXXXXXXXXX` measurement ID.** The measurement ID is the string in your
 website's tracking tag, it identifies a data stream rather than a property, and the
 reporting API cannot use it. It is the string most people have in front of them, which is
-why the plugin detects it specifically and tells you where the right number is instead of
+why the skill detects it specifically and tells you where the right number is instead of
 returning an unexplained error.
 
 ---
 
-## Step 7. Point the plugin at the key
+## Step 7. Point the skill at the key
 
 Open your OpenClaw config file (`~/.openclaw/openclaw.json`, unless you have moved it with
 `OPENCLAW_CONFIG_DIR`) and add this block, substituting your own property ID:
@@ -253,7 +253,7 @@ Put that line in your shell profile (`~/.bashrc`, `~/.zshrc`) so it survives a r
 make sure it is set in the environment OpenClaw itself runs in; a variable exported in a
 terminal is not visible to an app launched from a desktop icon.
 
-### Where the plugin looks, in order
+### Where the skill looks, in order
 
 The first source that yields a usable credential wins. Later sources are not consulted.
 
@@ -264,7 +264,7 @@ The first source that yields a usable credential wins. Later sources are not con
 | 3 | `~/.config/gcloud/application_default_credentials.json`: whatever `gcloud auth application-default login` last wrote |
 
 A consequence worth knowing: if `GOOGLE_APPLICATION_CREDENTIALS` is set to a stale path, the
-plugin will not fall through to your gcloud credentials. It uses source 2 and fails there.
+skill will not fall through to your gcloud credentials. It uses source 2 and fails there.
 `ga4_diagnose` reports every location it checked and what it found in each, so this is
 visible rather than mysterious.
 
@@ -326,7 +326,7 @@ table with numbers in it.
 | `invalid_grant`, or "This machine's clock is about *N* seconds behind Google's" | Authentication is a token this machine signs with a timestamp inside it. If the clock has drifted more than about a minute, Google rejects every signature. It looks exactly like a bad key, and people regenerate perfectly good keys over it. | Turn on network time sync: `sudo timedatectl set-ntp true` on Linux, **Date & Time → Set automatically** on macOS and Windows. Your key and your Analytics access are fine. |
 | "Google Analytics has run out of API quota for this property" (`429`) | GA4's API quota is per property and is **shared**: the GA4 web interface, Looker Studio, exports and every other API client draw from the same pool. Long date ranges, many dimensions and large row limits each cost more. | Daily allowances reset at midnight US Pacific; hourly ones reset within the hour. Meanwhile ask for fewer dimensions, shorter ranges and smaller row limits. If it recurs daily, something else on your account is consuming the quota. |
 | A report comes back with no rows, and no error | Almost always the date range predates the property. GA4 has no data before the day collection started, and asking for "last year" on a property created in March returns an empty, entirely correct answer. | Ask for a range you know has data ("last 7 days") and work backwards. Check when the property started collecting under **Admin → Property details**. Also check you are pointed at the production property and not a staging one. |
-| A report comes back with no rows, and "last 7 days" also returns nothing | The property is not receiving events at all: the tag was removed, the site moved, or this is a property that was created but never wired up. | Open the Realtime report in <https://analytics.google.com> and load your own site in another tab. If Realtime stays empty, the problem is the tracking tag on your site, not this plugin. |
+| A report comes back with no rows, and "last 7 days" also returns nothing | The property is not receiving events at all: the tag was removed, the site moved, or this is a property that was created but never wired up. | Open the Realtime report in <https://analytics.google.com> and load your own site in another tab. If Realtime stays empty, the problem is the tracking tag on your site, not this skill. |
 | "The request reached Google without a usable credential", or the credentials check fails outright | No credential source resolved: the path in config does not exist, `GOOGLE_APPLICATION_CREDENTIALS` points somewhere stale, or the file is not readable by the user OpenClaw runs as. | Run `ga4_diagnose`: it lists every location it checked and what it found in each. Then fix the path, or re-do step 4. |
 | "service-account file is missing client_email or private_key" | The file at that path is JSON but is not a Google service-account key, commonly an OAuth *client* secret downloaded from the Credentials page instead of a key from the service account's **Keys** tab. | Redo step 4: <https://console.cloud.google.com/iam-admin/serviceaccounts> → click `ga4-reader` → **Keys** → **Add key** → **Create new key** → **JSON**. |
 | "Google rejected the credential" after it previously worked | The key was deleted or the service account was disabled in Google Cloud. Tokens refresh automatically, so this is not an expiry. | Create a fresh JSON key (step 4) and point `credentials` at it. Delete the old key in the console while you are there. |
@@ -337,7 +337,7 @@ table with numbers in it.
 ## Alternative for developers: gcloud application-default credentials
 
 If you already have the `gcloud` CLI and your own Google account has access to the property,
-you can skip the service account entirely. The plugin reads
+you can skip the service account entirely. The skill reads
 `~/.config/gcloud/application_default_credentials.json` as its last credential source.
 
 ```bash

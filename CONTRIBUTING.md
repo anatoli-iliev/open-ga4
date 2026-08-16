@@ -5,7 +5,7 @@ running the tests against the built bundle, never pointing the OpenClaw CLI at y
 installation, backing every privacy claim with a test, keeping the prose consistent with the
 code, and adding a preset whose field names are real.
 
-Everything you contribute is licensed MIT, same as the rest of the project.
+Everything you contribute is licensed MIT-0, same as the rest of the project.
 
 ---
 
@@ -13,7 +13,7 @@ Everything you contribute is licensed MIT, same as the rest of the project.
 
 ```bash
 git clone <this repository>
-cd openclaw-plugin-ga4
+cd open-ga4
 npm install
 ```
 
@@ -84,7 +84,7 @@ once" run the bare CLI.
 ## Every privacy claim needs a test
 
 This is the rule the project exists to demonstrate. `README.md` and `PRIVACY.md` make
-specific negative claims: that the plugin does not do certain things. A negative claim in a
+specific negative claims: that the skill does not do certain things. A negative claim in a
 README is worth nothing on its own. Each one is checked against the built bundle.
 
 | Claim | Where it is enforced | Where it is asserted |
@@ -98,12 +98,12 @@ README is worth nothing on its own. Each one is checked against the built bundle
 
 So:
 
-- **Adding a sentence to `README.md` or `PRIVACY.md` that says the plugin does not do
+- **Adding a sentence to `README.md` or `PRIVACY.md` that says the skill does not do
   something means adding the assertion in the same commit.** If you cannot write the
   assertion, do not write the sentence.
 - **A limitation that cannot be enforced in code is documented as a limitation, not softened
   into a claim.** The load-bearing example: report data returned to the agent is seen by
-  whatever model provider the user has configured. This plugin controls what it asks Google
+  whatever model provider the user has configured. This skill controls what it asks Google
   for and what it hands to the agent; it has no say in what the user's own LLM provider does
   with a report once the agent reads it. `PRIVACY.md` says that plainly and nothing in the
   docs may imply otherwise.
@@ -149,7 +149,7 @@ needs an artifact that was actually fetched, and a link to it.** State the verif
 link the source, move on. No characterisation beyond what the artifact shows, no adjectives,
 no name-and-shame. If you cannot link to the file or page you read it in, it does not go in.
 
-The same applies to the plugin's own copy: no superlatives, no marketing voice. Write like
+The same applies to the skill's own copy: no superlatives, no marketing voice. Write like
 an engineer explaining their work.
 
 ---
@@ -167,7 +167,7 @@ and both the docs and the model's training data are full of names that no longer
 Two of the research briefs behind this project produced hand-maintained field lists that
 disagreed with each other, which is the whole argument for checking against the property.
 
-The easiest check is the plugin itself: run `ga4_fields` with the field you intend to use
+The easiest check is the skill itself: run `ga4_fields` with the field you intend to use
 and confirm the exact `apiName` comes back.
 
 For the receipt to paste into the pull request, read the metadata endpoint directly:

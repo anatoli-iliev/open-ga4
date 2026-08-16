@@ -63,5 +63,5 @@ First release.
 - Retired metric names are rewritten to their replacements
   (`conversions` → `keyEvents`) and the rewrite is reported.
 
-[Unreleased]: https://github.com/anatoli-iliev/openclaw-plugin-ga4/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/anatoli-iliev/openclaw-plugin-ga4/releases/tag/v0.1.0
+[Unreleased]: https://github.com/anatoli-iliev/open-ga4/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/anatoli-iliev/open-ga4/releases/tag/v0.1.0

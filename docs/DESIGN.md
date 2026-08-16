@@ -1,4 +1,4 @@
-# Design: `openclaw-plugin-ga4`
+# Design: `open-ga4`
 
 Status: accepted · 2026-08-14
 
