@@ -49,7 +49,6 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
 
   async function build(): Promise<Ga4Client> {
     const resolution = await resolveCredentials({
-      configuredPath: config.credentialsPath,
       env: options.env,
     });
     lastProbes = resolution.probes;

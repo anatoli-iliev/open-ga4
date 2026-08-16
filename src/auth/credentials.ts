@@ -43,8 +43,6 @@ export type CredentialResolution =
   | { ok: false; probes: CredentialProbe[] };
 
 export type CredentialEnvironment = {
-  /** `plugins.entries.ga4.config.credentials`, already resolved to a string. */
-  configuredPath?: string;
   env?: NodeJS.ProcessEnv;
   home?: string;
   readFileImpl?: (filePath: string) => Promise<string>;
@@ -146,10 +144,9 @@ export async function resolveCredentials(
   const home = options.home ?? homedir();
   const read = options.readFileImpl ?? ((filePath: string) => readFile(filePath, "utf8"));
 
+  const probes: CredentialProbe[] = [];
+
   const candidates: Array<{ label: string; path: string } | undefined> = [
-    options.configuredPath
-      ? { label: "plugin config (credentials)", path: expandHome(options.configuredPath, home) }
-      : undefined,
     env.GOOGLE_APPLICATION_CREDENTIALS
       ? {
           label: "GOOGLE_APPLICATION_CREDENTIALS",
@@ -159,7 +156,38 @@ export async function resolveCredentials(
     { label: "gcloud application-default credentials", path: applicationDefaultCredentialsPath(home) },
   ];
 
-  const probes: CredentialProbe[] = [];
+  // GA4_CREDENTIALS is the highest-priority source and accepts either form
+  // someone downloading a key ends up with: the file's contents, pasted
+  // straight in, or a path to where they saved it. The two are told apart by
+  // whether the trimmed value starts with a brace.
+  const inline = env.GA4_CREDENTIALS?.trim();
+  if (inline !== undefined && inline !== "") {
+    if (inline.startsWith("{")) {
+      try {
+        const credential = parseCredentialFile(inline, "GA4_CREDENTIALS (pasted key)");
+        probes.push({ label: "GA4_CREDENTIALS (pasted key)", path: "(inline)", status: "used" });
+        return { ok: true, credential, probes };
+      } catch {
+        // Deliberately does not include the value, any excerpt of it, or the
+        // underlying parser error: JSON.parse embeds the offending text in
+        // its message, and a malformed pasted key is still a private key.
+        // Probe details are printed to a terminal, read by an agent, and
+        // sent to whatever model provider is configured.
+        probes.push({
+          label: "GA4_CREDENTIALS (pasted key)",
+          path: "(inline)",
+          status: "invalid",
+          detail: "the value starts with { but is not valid service-account JSON",
+        });
+        // Returns immediately rather than falling through to the other
+        // sources: someone who pasted a key and got it wrong needs to hear
+        // that the key they pasted is wrong, not that gcloud credentials are
+        // also absent.
+        return { ok: false, probes };
+      }
+    }
+    candidates.unshift({ label: "GA4_CREDENTIALS (file)", path: expandHome(inline, home) });
+  }
 
   for (const candidate of candidates) {
     if (!candidate) {

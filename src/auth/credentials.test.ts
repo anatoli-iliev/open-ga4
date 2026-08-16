@@ -1,3 +1,6 @@
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applicationDefaultCredentialsPath,
@@ -72,21 +75,6 @@ describe("applicationDefaultCredentialsPath", () => {
 });
 
 describe("resolveCredentials", () => {
-  it("prefers the configured path over everything else", async () => {
-    const result = await resolveCredentials({
-      configuredPath: "/keys/sa.json",
-      env: { GOOGLE_APPLICATION_CREDENTIALS: "/env/sa.json" },
-      home: "/home/ada",
-      readFileImpl: async (filePath) => {
-        expect(filePath).toBe("/keys/sa.json");
-        return SERVICE_ACCOUNT;
-      },
-    });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("unreachable");
-    expect(result.credential.source).toBe("plugin config (credentials)");
-  });
-
   it("falls back to GOOGLE_APPLICATION_CREDENTIALS", async () => {
     const result = await resolveCredentials({
       env: { GOOGLE_APPLICATION_CREDENTIALS: "/env/sa.json" },
@@ -112,32 +100,6 @@ describe("resolveCredentials", () => {
     expect(result.credential.kind).toBe("authorized_user");
   });
 
-  it("expands a leading tilde in a configured path", async () => {
-    const seen: string[] = [];
-    await resolveCredentials({
-      configuredPath: "~/keys/sa.json",
-      env: {},
-      home: "/home/ada",
-      readFileImpl: async (filePath) => {
-        seen.push(filePath);
-        return notFound();
-      },
-    });
-    expect(seen[0]).toBe("/home/ada/keys/sa.json");
-  });
-
-  it("keeps trying after an invalid file rather than giving up", async () => {
-    const result = await resolveCredentials({
-      configuredPath: "/keys/broken.json",
-      env: {},
-      home: "/home/ada",
-      readFileImpl: async (filePath) =>
-        filePath === "/keys/broken.json" ? "{oops" : AUTHORIZED_USER,
-    });
-    expect(result.ok).toBe(true);
-    expect(result.probes.map((probe) => probe.status)).toEqual(["invalid", "used"]);
-  });
-
   it("reports every location it checked when nothing is found", async () => {
     const result = await resolveCredentials({
       env: {},
@@ -151,11 +113,110 @@ describe("resolveCredentials", () => {
       status: "absent",
     });
   });
+});
 
-  it("never puts key material into a probe", async () => {
+describe("GA4_CREDENTIALS", () => {
+  const PASTED_SERVICE_ACCOUNT = JSON.stringify({
+    type: "service_account",
+    project_id: "demo",
+    private_key_id: "kid",
+    private_key: "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n",
+    client_email: "reader@demo.iam.gserviceaccount.com",
+    token_uri: "https://oauth2.googleapis.com/token",
+  });
+
+  it("accepts the key's contents inline", async () => {
+    const result = await resolveCredentials({ env: { GA4_CREDENTIALS: PASTED_SERVICE_ACCOUNT } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.credential.kind).toBe("service_account");
+    if (result.credential.kind !== "service_account") throw new Error("unreachable");
+    expect(result.credential.account.clientEmail).toBe("reader@demo.iam.gserviceaccount.com");
+  });
+
+  it("tolerates leading whitespace before the opening brace", async () => {
     const result = await resolveCredentials({
-      configuredPath: "/keys/sa.json",
-      env: {},
+      env: { GA4_CREDENTIALS: `\n  ${PASTED_SERVICE_ACCOUNT}` },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a path when the value is not JSON", async () => {
+    const file = join(tmpdir(), `open-ga4-${process.pid}.json`);
+    writeFileSync(file, PASTED_SERVICE_ACCOUNT);
+    try {
+      const result = await resolveCredentials({ env: { GA4_CREDENTIALS: file } });
+      expect(result.ok).toBe(true);
+    } finally {
+      rmSync(file, { force: true });
+    }
+  });
+
+  it("reports malformed inline JSON without echoing the value", async () => {
+    const result = await resolveCredentials({ env: { GA4_CREDENTIALS: '{"private_key":"secret' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const probe = result.probes.find((p) => p.label.startsWith("GA4_CREDENTIALS"));
+    expect(probe?.status).toBe("invalid");
+    expect(JSON.stringify(result.probes)).not.toContain("secret");
+  });
+
+  it("takes priority over GOOGLE_APPLICATION_CREDENTIALS", async () => {
+    const result = await resolveCredentials({
+      env: {
+        GA4_CREDENTIALS: PASTED_SERVICE_ACCOUNT,
+        GOOGLE_APPLICATION_CREDENTIALS: "/nonexistent.json",
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.probes[0]?.label).toContain("GA4_CREDENTIALS");
+  });
+
+  // Relocated from resolveCredentials's now-removed configuredPath option.
+  // GA4_CREDENTIALS given a path is the reachable equivalent: an explicitly
+  // supplied location that outranks GOOGLE_APPLICATION_CREDENTIALS.
+  it("prefers a GA4_CREDENTIALS path over GOOGLE_APPLICATION_CREDENTIALS", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json", GOOGLE_APPLICATION_CREDENTIALS: "/env/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        expect(filePath).toBe("/keys/sa.json");
+        return SERVICE_ACCOUNT;
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.credential.source).toBe("GA4_CREDENTIALS (file)");
+  });
+
+  it("expands a leading tilde in a GA4_CREDENTIALS path", async () => {
+    const seen: string[] = [];
+    await resolveCredentials({
+      env: { GA4_CREDENTIALS: "~/keys/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        seen.push(filePath);
+        return notFound();
+      },
+    });
+    expect(seen[0]).toBe("/home/ada/keys/sa.json");
+  });
+
+  it("keeps trying after an invalid GA4_CREDENTIALS file rather than giving up", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/broken.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) =>
+        filePath === "/keys/broken.json" ? "{oops" : AUTHORIZED_USER,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.probes.map((probe) => probe.status)).toEqual(["invalid", "used"]);
+  });
+
+  it("never puts key material into a probe for a GA4_CREDENTIALS path", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json" },
       home: "/home/ada",
       readFileImpl: async () => SERVICE_ACCOUNT,
     });
