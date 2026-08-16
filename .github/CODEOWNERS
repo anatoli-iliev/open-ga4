@@ -1,0 +1,92 @@
+# Code owners for openclaw-plugin-ga4
+#
+# GitHub reads this file to request reviews automatically. It does not, on its
+# own, require anything: a CODEOWNERS entry only becomes a gate once branch
+# protection on `main` turns on "Require review from Code Owners". Until then
+# treat every line below as a statement of who is accountable for a path, and
+# as pre-wiring for the first outside contributor.
+#
+# Syntax notes, because both of these bite people:
+#   - The LAST matching pattern wins. General rules go first, specific ones last.
+#   - A leading `/` anchors to the repository root. Without it, `foo/` matches
+#     any directory named `foo` at any depth.
+#
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ---------------------------------------------------------------------------
+# Default owner for everything not claimed below.
+# ---------------------------------------------------------------------------
+
+*                               @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# Credentials and authentication.
+#
+# Reads a Google service-account private key, signs an RS256 JWT, and exchanges
+# it for an access token. A mistake here leaks a key or widens the OAuth scope
+# beyond analytics.readonly.
+# ---------------------------------------------------------------------------
+
+/src/auth/                      @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# Privacy controls.
+#
+# Redaction of personal data, the user-identifying dimension policy, the
+# property allowlist, and the opt-in audit log. PRIVACY.md makes promises that
+# these files are the only thing keeping true.
+# ---------------------------------------------------------------------------
+
+/src/privacy/                   @anatoli-iliev
+/PRIVACY.md                     @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# Network egress.
+#
+# One guard rejects any host outside the three allowed Google endpoints and
+# refuses to follow redirects, so a 302 cannot hand a bearer token to a host
+# that was never checked. Changing this file changes where credentials can go.
+# ---------------------------------------------------------------------------
+
+/src/ga4/http.ts                @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# Tests that hold the security and privacy claims up.
+#
+# surface.test.ts asserts the guarantees against the built bundle rather than
+# the source. docs.test.ts pins the documentation to the code. Weakening either
+# is how a claim silently stops being true.
+# ---------------------------------------------------------------------------
+
+/src/privacy/surface.test.ts    @anatoli-iliev
+/src/docs.test.ts               @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# Supply chain and release.
+#
+# Dependency manifests, the lockfile, CI (which runs on pull requests from
+# forks), and Dependabot's configuration.
+# ---------------------------------------------------------------------------
+
+/package.json                   @anatoli-iliev
+/package-lock.json              @anatoli-iliev
+/.github/                       @anatoli-iliev
+/.github/workflows/             @anatoli-iliev
+/.github/dependabot.yml         @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# Published contract and legal text.
+#
+# The plugin manifest is what OpenClaw reads to decide what this package
+# provides. LICENSE and SECURITY.md are commitments to other people.
+# ---------------------------------------------------------------------------
+
+/openclaw.plugin.json           @anatoli-iliev
+/LICENSE                        @anatoli-iliev
+/SECURITY.md                    @anatoli-iliev
+
+# ---------------------------------------------------------------------------
+# This file.
+# ---------------------------------------------------------------------------
+
+/.github/CODEOWNERS             @anatoli-iliev
