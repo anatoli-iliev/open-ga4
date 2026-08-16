@@ -68,6 +68,28 @@ function expandHome(filePath: string, home: string): string {
 }
 
 /**
+ * A generous cross-platform stand-in for PATH_MAX. Node exposes no such
+ * constant; real limits differ by OS (Linux 4096, macOS and older Windows
+ * far less), so this only needs to catch what is obviously not a path
+ * anyone would type or configure, not match any one OS exactly.
+ */
+const MAX_PLAUSIBLE_PATH_LENGTH = 4096;
+
+/**
+ * True when a value that failed the `{`-prefixed inline-JSON check still
+ * plainly is not a file path either: a base64-encoded key, a bare PEM
+ * block, or JSON that kept its surrounding quotes from a .env file are the
+ * common near-misses, and all are either multi-line, unusually long, or say
+ * PRIVATE KEY outright. Catching these before a filesystem read is attempted
+ * matters because a failed read's own error can embed the attempted path
+ * verbatim (see the ENAMETOOLONG/EACCES/ENOTDIR handling below), which would
+ * otherwise leak exactly the value this check exists to keep out of a path.
+ */
+function looksLikeAMisplacedKeyRatherThanAPath(value: string): boolean {
+  return value.includes("\n") || value.length > MAX_PLAUSIBLE_PATH_LENGTH || value.includes("PRIVATE KEY");
+}
+
+/**
  * Parse a Google credential file.
  *
  * Both shapes Google emits are accepted: a service-account key (what you
@@ -146,7 +168,7 @@ export async function resolveCredentials(
 
   const probes: CredentialProbe[] = [];
 
-  const candidates: Array<{ label: string; path: string } | undefined> = [
+  const candidates: Array<{ label: string; path: string; displayPath?: string } | undefined> = [
     env.GOOGLE_APPLICATION_CREDENTIALS
       ? {
           label: "GOOGLE_APPLICATION_CREDENTIALS",
@@ -186,30 +208,66 @@ export async function resolveCredentials(
         return { ok: false, probes };
       }
     }
-    candidates.unshift({ label: "GA4_CREDENTIALS (file)", path: expandHome(inline, home) });
+    if (looksLikeAMisplacedKeyRatherThanAPath(inline)) {
+      // Refuse to treat this as a path at all, the same shape the
+      // malformed-inline branch above uses: a fixed detail, a placeholder in
+      // place of the value, and an immediate return. Attempting to read it
+      // would risk a filesystem error whose own message embeds the attempted
+      // path verbatim (Node's errno messages quote it), which is exactly the
+      // leak this whole check exists to prevent.
+      probes.push({
+        label: "GA4_CREDENTIALS (file)",
+        path: "(GA4_CREDENTIALS value)",
+        status: "invalid",
+        // Deliberately does not say what specifically about the value looked
+        // wrong (a newline, its length, a PEM marker): naming the marker
+        // that tripped the check is itself an excerpt of a private key.
+        detail:
+          "the value is not JSON and does not look like a file path either; check that a key " +
+          "was not pasted where a path was expected",
+      });
+      return { ok: false, probes };
+    }
+    // The real path is still used to actually read the file; only what is
+    // shown in a probe is replaced, since this value came from an
+    // environment variable that a person could have pasted a key into
+    // rather than a path, and a probe is printed to a terminal, read by an
+    // agent, and sent to whatever model provider is configured.
+    candidates.unshift({
+      label: "GA4_CREDENTIALS (file)",
+      path: expandHome(inline, home),
+      displayPath: "(GA4_CREDENTIALS value)",
+    });
   }
 
   for (const candidate of candidates) {
     if (!candidate) {
       continue;
     }
+    const shown = { label: candidate.label, path: candidate.displayPath ?? candidate.path };
     let contents: string;
     try {
       contents = await read(candidate.path);
     } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
       probes.push({
-        ...candidate,
-        status: (error as NodeJS.ErrnoException)?.code === "ENOENT" ? "absent" : "unreadable",
-        detail: (error as NodeJS.ErrnoException)?.code === "ENOENT" ? undefined : describe(error),
+        ...shown,
+        status: code === "ENOENT" ? "absent" : "unreadable",
+        // Only the errno code, never the error's own message: Node's errno
+        // messages embed the path they tried to open verbatim, and that path
+        // may be a mis-pasted key rather than a real path (see
+        // looksLikeAMisplacedKeyRatherThanAPath above, which only catches
+        // the common cases, not every possible one).
+        detail: code === "ENOENT" ? undefined : (code ?? "could not be read"),
       });
       continue;
     }
     try {
       const credential = parseCredentialFile(contents, candidate.label);
-      probes.push({ ...candidate, status: "used" });
+      probes.push({ ...shown, status: "used" });
       return { ok: true, credential, probes };
     } catch (error) {
-      probes.push({ ...candidate, status: "invalid", detail: describe(error) });
+      probes.push({ ...shown, status: "invalid", detail: describe(error) });
     }
   }
 

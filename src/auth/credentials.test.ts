@@ -147,6 +147,15 @@ describe("GA4_CREDENTIALS", () => {
     try {
       const result = await resolveCredentials({ env: { GA4_CREDENTIALS: file } });
       expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // No readFileImpl or home override here, so a failure would fall
+      // through to the real ~/.config/gcloud/application_default_credentials.json
+      // on whatever machine runs this test. Pinning the source is what
+      // catches that: without it, this test would pass regardless of
+      // whether GA4_CREDENTIALS was consulted at all on a machine that
+      // happens to have real gcloud ADC set up, which describes most
+      // machines used to develop this file.
+      expect(result.credential.source).toBe("GA4_CREDENTIALS (file)");
     } finally {
       rmSync(file, { force: true });
     }
@@ -196,6 +205,12 @@ describe("GA4_CREDENTIALS", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.credential.source).toBe("GA4_CREDENTIALS (file)");
+    // Pins the ordering itself, not just the eventual winner: the mock's own
+    // expect() throws for any other path, but that throw is swallowed by
+    // resolveCredentials's own try/catch and recorded as an "unreadable"
+    // probe, so without this the test would still pass even if
+    // GA4_CREDENTIALS were tried last rather than first.
+    expect(result.probes[0]?.label).toBe("GA4_CREDENTIALS (file)");
   });
 
   it("expands a leading tilde in a GA4_CREDENTIALS path", async () => {
@@ -248,4 +263,44 @@ describe("GA4_CREDENTIALS", () => {
     expect(probe?.status).toBe("invalid");
     expect(JSON.stringify(result.probes)).not.toContain("secret");
   });
+
+  it("does not echo a pasted key that was mistaken for a path", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: `'${PASTED_SERVICE_ACCOUNT}` },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        throw Object.assign(new Error(`ENAMETOOLONG: name too long, open '${filePath}'`), {
+          code: "ENAMETOOLONG",
+        });
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result.probes)).not.toContain("PRIVATE KEY");
+  });
+
+  // The fixture above contains "PRIVATE KEY" and so is refused before any
+  // read is attempted, regardless of which errno a real filesystem would
+  // raise. These two exercise the other, independent layer: a value that
+  // does look like a plausible path (short, no newline, no PRIVATE KEY) but
+  // still causes a non-ENOENT read failure whose message would otherwise
+  // repeat it verbatim. Node embeds the attempted path in the errno message
+  // for EACCES and ENOTDIR exactly as it does for ENAMETOOLONG.
+  it.each(["EACCES", "ENOTDIR"] as const)(
+    "does not echo the read error's message for %s",
+    async (code) => {
+      const result = await resolveCredentials({
+        env: { GA4_CREDENTIALS: "/keys/sa.json" },
+        home: "/home/ada",
+        readFileImpl: async (filePath) => {
+          throw Object.assign(
+            new Error(`${code}: some-operating-system-detail, open '${filePath}BASE64BLOBSECRET'`),
+            { code },
+          );
+        },
+      });
+      expect(result.ok).toBe(false);
+      expect(JSON.stringify(result.probes)).not.toContain("BASE64BLOBSECRET");
+      expect(JSON.stringify(result.probes)).not.toContain("some-operating-system-detail");
+    },
+  );
 });

@@ -61,8 +61,8 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
         "NO_CREDENTIALS",
         `No Google credentials found. Locations checked:\n${checked}`,
         "Create a service-account key in Google Cloud, grant its email Viewer access on your GA4 " +
-          "property, and set plugins.entries.ga4.config.credentials to the key file path. " +
-          "SETUP.md walks through it. Run ga4_diagnose for a per-step check.",
+          "property, and set GA4_CREDENTIALS to the key's contents or a path to it (GOOGLE_APPLICATION_CREDENTIALS " +
+          "also works, as a path). SETUP.md walks through it. Run ga4_diagnose for a per-step check.",
       );
     }
 
