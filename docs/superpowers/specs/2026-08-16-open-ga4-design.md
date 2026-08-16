@@ -177,10 +177,40 @@ metadata:
       - name: NO_COLOR
         required: false
         description: Set to any value to disable coloured output.
+      - name: GA4_REDACT
+        required: false
+        description: >-
+          Set to 0, false, no or off to turn off redaction of dimension values.
+      - name: GA4_ALLOW_USER_DIMENSIONS
+        required: false
+        description: >-
+          Set to 1, true, yes or on to allow userId, signedInWithUserId and
+          user-scoped custom dimensions, which are refused by default.
+      - name: GA4_PROPERTY_ALLOWLIST
+        required: false
+        description: >-
+          Comma-separated numeric property ids. When set, every other property
+          is refused.
+      - name: GA4_AUDIT_LOG
+        required: false
+        description: >-
+          Path to a local JSON-lines log of what was asked, never what came
+          back. Off unless set.
     emoji: "📈"
     homepage: https://github.com/anatoli-iliev/open-ga4
 ---
 ```
+
+**Eight declared variables, not four.** The last four are the settings that weaken a
+privacy default, and each of them is an environment variable precisely so that a
+*person* sets it: a command-line flag can be set by the model, and a page title is
+attacker-controlled text that reaches the model, so a flag would make "turn redaction
+off" reachable from a dimension value. `src/cli/args.ts` therefore rejects every
+spelling of them as a flag. Declaring all eight is also a publishing requirement rather
+than a tidiness one: ClawHub's security review compares declared metadata against
+actual behaviour, and `src/config.ts` reads all four, so omitting them would be an
+undeclared read. A test asserts the declared set, the set the code reads, and this list
+are the same eight names.
 
 The description is 282 characters, inside the roughly 300-character budget that
 keeps `openclaw skills list` rendering it in one or two table lines rather than
@@ -193,11 +223,16 @@ description's only job is getting it chosen. A test enforces the length.
 The unconditional gate takes nothing. Credentials resolve from four sources, in
 this order, first match wins:
 
-1. `GA4_CREDENTIALS`, holding either the service-account JSON key's contents or
-   a path to it.
-2. The `credentials` value in the skill's own config entry.
+1. `GA4_CREDENTIALS`, holding the service-account JSON key's contents.
+2. `GA4_CREDENTIALS`, holding a path to that key file instead. The two are told
+   apart by whether the trimmed value starts with `{`, per D8.
 3. `GOOGLE_APPLICATION_CREDENTIALS`, the Google-standard variable.
 4. gcloud application-default credentials at the well-known path.
+
+An earlier draft of this list had "the `credentials` value in the skill's own
+config entry" as source 2. There is no such entry: `src/auth/credentials.ts`
+reads the environment and the filesystem and nothing else, which is what makes
+`envVars` above the complete declaration of what this skill reads.
 
 Listing any single one of those in `requires.env` would report "needs setup"
 forever for every user relying on the other three, and a skill reporting "needs
