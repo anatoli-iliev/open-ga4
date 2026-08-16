@@ -1,21 +1,22 @@
 import { describe, expect, it } from "vitest";
+import type { CheckId } from "../tools/discovery.js";
 import { BLOCKED_ON_VALUES, setupStateFrom } from "./state.js";
 
-const pass = (label: string) => ({ label, status: "pass" as const, detail: "" });
-const fail = (label: string, code: string) => ({ label, status: "fail" as const, detail: "", code });
+const pass = (id: CheckId, label: string) => ({ id, label, status: "pass" as const, detail: "" });
+const fail = (id: CheckId, label: string, code: string) => ({ id, label, status: "fail" as const, detail: "", code });
 
 describe("setupStateFrom", () => {
   it("reports ok when every check passes", () => {
-    const state = setupStateFrom([pass("Google credentials"), pass("Data API report")]);
+    const state = setupStateFrom([pass("credentials", "Google credentials"), pass("data_api_report", "Data API report")]);
     expect(state).toMatchObject({ ok: true, blocked_on: "ok" });
     expect(state.next).toBeUndefined();
   });
 
   it("returns only the FIRST failure, not all of them", () => {
     const state = setupStateFrom([
-      fail("Google credentials", "CREDENTIALS_MISSING"),
-      fail("Admin API and property access", "NO_PROPERTY_ACCESS"),
-      fail("Data API report", "DATA_API_DISABLED"),
+      fail("credentials", "Google credentials", "CREDENTIALS_MISSING"),
+      fail("admin_api", "Admin API and property access", "NO_PROPERTY_ACCESS"),
+      fail("data_api_report", "Data API report", "DATA_API_DISABLED"),
     ]);
     expect(state.blocked_on).toBe("no_credentials");
     expect(JSON.stringify(state)).not.toContain("no_property_grant");
@@ -23,7 +24,7 @@ describe("setupStateFrom", () => {
 
   it("hands back the exact string to paste for a missing grant", () => {
     const state = setupStateFrom(
-      [pass("Google credentials"), fail("Admin API and property access", "NO_PROPERTY_ACCESS")],
+      [pass("credentials", "Google credentials"), fail("admin_api", "Admin API and property access", "NO_PROPERTY_ACCESS")],
       "reader@demo.iam.gserviceaccount.com",
     );
     expect(state.blocked_on).toBe("no_property_grant");
@@ -33,17 +34,18 @@ describe("setupStateFrom", () => {
   });
 
   it("distinguishes a measurement id from a missing property", () => {
-    expect(setupStateFrom([fail("Property selection", "PROPERTY_NOT_FOUND")]).blocked_on)
+    expect(setupStateFrom([fail("property_selection", "Property selection", "PROPERTY_NOT_FOUND")]).blocked_on)
       .toBe("wrong_property");
-    expect(setupStateFrom([fail("Property selection", "NO_PROPERTY")]).blocked_on)
+    expect(setupStateFrom([fail("property_selection", "Property selection", "NO_PROPERTY")]).blocked_on)
       .toBe("no_property_selected");
   });
 
   it("treats a missing Admin API as non-blocking when reports still work", () => {
     const state = setupStateFrom([
-      pass("Google credentials"),
-      fail("Admin API and property access", "ADMIN_API_DISABLED"),
-      pass("Data API report"),
+      pass("credentials", "Google credentials"),
+      fail("admin_api", "Admin API and property access", "ADMIN_API_DISABLED"),
+      pass("data_api_report", "Data API report"),
+      pass("privacy_settings", "Privacy settings"),
     ]);
     expect(state.ok).toBe(true);
     expect(state.blocked_on).toBe("ok");
@@ -51,7 +53,7 @@ describe("setupStateFrom", () => {
 
   it("never emits a blocked_on value outside the declared set", () => {
     for (const code of ["CREDENTIALS_MISSING", "CLOCK_SKEW", "QUOTA_EXHAUSTED", "UNEXPECTED"]) {
-      expect(BLOCKED_ON_VALUES).toContain(setupStateFrom([fail("x", code)]).blocked_on);
+      expect(BLOCKED_ON_VALUES).toContain(setupStateFrom([fail("data_api_report", "x", code)]).blocked_on);
     }
   });
 
@@ -62,14 +64,20 @@ describe("setupStateFrom", () => {
     // same "Data API report" call that also raises QUOTA_EXHAUSTED, but
     // neither means quota.
     for (const code of ["UNEXPECTED", "GOOGLE_SERVER_ERROR", "some_future_code_this_taxonomy_does_not_know"]) {
-      const state = setupStateFrom([fail("Data API report", code)]);
+      const state = setupStateFrom([fail("data_api_report", "Data API report", code)]);
       expect(state.blocked_on).toBe("unknown");
     }
   });
 
   it("tells the agent to report the message rather than guess a fix, for an unknown code", () => {
     const state = setupStateFrom([
-      { label: "Data API report", status: "fail" as const, detail: "server exploded", code: "GOOGLE_SERVER_ERROR" },
+      {
+        id: "data_api_report" as const,
+        label: "Data API report",
+        status: "fail" as const,
+        detail: "server exploded",
+        code: "GOOGLE_SERVER_ERROR",
+      },
     ]);
     expect(state.blocked_on).toBe("unknown");
     expect(state.next?.action).toContain("server exploded");
@@ -79,12 +87,22 @@ describe("setupStateFrom", () => {
   });
 
   it("still blocks on a disabled Admin API when no later check proves reports work", () => {
-    // The skip only applies when a *later* check passed. Here nothing after
-    // it did (there is nothing after it at all), so it must still be the one
-    // thing reported, not silently treated as fine.
+    // Mirrors the concrete failure a review caught, not a shape production
+    // can never emit: Admin API disabled and no default property configured.
+    // The Admin API check fails without aborting; `properties` stays empty;
+    // property selection fails with NO_PROPERTY because there is nothing to
+    // auto-select; the Data API report check never runs at all; and the
+    // trailing Privacy settings check still passes (redaction is on by
+    // default). A predicate that skips ADMIN_API_DISABLED whenever *any*
+    // later check passed would be satisfied by that trailing pass alone,
+    // whether or not a report ever ran, hiding the one genuine blocking step
+    // and sending the user in a loop: told to run `properties` to fix
+    // "no property selected", which fails with the same ADMIN_API_DISABLED.
     const state = setupStateFrom([
-      pass("Google credentials"),
-      fail("Admin API and property access", "ADMIN_API_DISABLED"),
+      pass("credentials", "Google credentials"),
+      fail("admin_api", "Admin API and property access", "ADMIN_API_DISABLED"),
+      fail("property_selection", "Property selection", "NO_PROPERTY"),
+      pass("privacy_settings", "Privacy settings"),
     ]);
     expect(state.ok).toBe(false);
     expect(state.blocked_on).toBe("admin_api_disabled");
@@ -99,10 +117,10 @@ describe("setupStateFrom", () => {
     // less safe. It must not be silently reinterpreted as a quota problem or
     // any other bucket.
     const state = setupStateFrom([
-      pass("Google credentials"),
-      pass("Admin API and property access"),
-      pass("Data API report"),
-      { label: "Privacy settings", status: "fail" as const, detail: "redaction is off" },
+      pass("credentials", "Google credentials"),
+      pass("admin_api", "Admin API and property access"),
+      pass("data_api_report", "Data API report"),
+      { id: "privacy_settings" as const, label: "Privacy settings", status: "fail" as const, detail: "redaction is off" },
     ]);
     expect(state.ok).toBe(true);
     expect(state.blocked_on).toBe("ok");
@@ -113,7 +131,7 @@ describe("setupStateFrom", () => {
     // Nothing else about that file (its path, its key material, any other
     // credential field) may travel into this output alongside it.
     const state = setupStateFrom(
-      [pass("Google credentials"), fail("Admin API and property access", "NO_PROPERTY_ACCESS")],
+      [pass("credentials", "Google credentials"), fail("admin_api", "Admin API and property access", "NO_PROPERTY_ACCESS")],
       "reader@demo.iam.gserviceaccount.com",
     );
     const json = JSON.stringify(state);

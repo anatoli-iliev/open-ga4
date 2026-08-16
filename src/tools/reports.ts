@@ -82,6 +82,9 @@ function present(
       rowsShown: formatted.rowsShown,
       rowsAvailable: formatted.rowsAvailable,
       redactions: formatted.redactions,
+      // The actual figures, already formatted and redacted by formatReport,
+      // so --json has an answer that is not "re-parse the markdown table".
+      rows: formatted.rows,
       caveats: formatted.caveats,
     },
   };

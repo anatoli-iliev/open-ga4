@@ -202,21 +202,28 @@ function mapped(code: string, principal?: string, detail?: string): Mapped {
  *   error-driven) is outside this taxonomy entirely: it is a standing
  *   posture, not a reason a report cannot run, so it is not treated as
  *   blocking.
- * - ADMIN_API_DISABLED is skipped when some later check passed: the Admin
- *   API only affects listing properties by name, so a report that works
- *   while it is disabled is a working setup, and reporting it as broken
- *   sends people to fix something that does not matter.
+ * - ADMIN_API_DISABLED is skipped when the "data_api_report" check
+ *   specifically passed later: that is the one check that actually proves
+ *   reports work. Matching on *any* later check passing is wrong: runDiagnose
+ *   always appends a "privacy_settings" check after it, and that check
+ *   passes on essentially every real run (redaction is on by default), which
+ *   would satisfy an "any later pass" predicate whether or not reports ever
+ *   ran at all. That would hide the one genuine blocking step and send
+ *   someone in a loop: told to run `properties` to fix "no property
+ *   selected", which fails with the same ADMIN_API_DISABLED. Matched on
+ *   `id`, a stable identifier, rather than `label`, which is display text
+ *   somebody will reword.
  */
 export function setupStateFrom(checks: Check[], principal?: string): SetupState {
-  const laterCheckPassed = (fromIndex: number): boolean =>
-    checks.slice(fromIndex + 1).some((check) => check.status === "pass");
+  const dataApiReportPassedLater = (fromIndex: number): boolean =>
+    checks.slice(fromIndex + 1).some((check) => check.id === "data_api_report" && check.status === "pass");
 
   for (let i = 0; i < checks.length; i += 1) {
     const check = checks[i]!;
     if (check.status !== "fail" || check.code === undefined) {
       continue;
     }
-    if (check.code === "ADMIN_API_DISABLED" && laterCheckPassed(i)) {
+    if (check.code === "ADMIN_API_DISABLED" && dataApiReportPassedLater(i)) {
       continue;
     }
     const { blocked_on, next, url } = mapped(check.code, principal, check.detail);

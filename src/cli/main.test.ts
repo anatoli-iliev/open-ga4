@@ -106,28 +106,66 @@ function runtimeStuckOnNoPropertySelected(secondCall: AccountSummary[] | Error):
 }
 
 /**
- * Runs dispatch against a fakeRuntime() and reduces the outcome to an exit
- * code the same way main()'s own catch block does. Used instead of main()
- * itself whenever a test needs to get past property resolution: main() builds
+ * A runtime whose client() always rejects with CREDENTIALS_MISSING,
+ * synchronously and with no filesystem or network access whatsoever. Used in
+ * place of a real main() call for exercising "no credentials configured":
+ * main() resolves credentials for real, which falls back to the real home
+ * directory regardless of the env object a test passes in, so a real call
+ * can find a real gcloud ADC file and make a real Google request on a
+ * machine that has one.
+ */
+function runtimeWithNoCredentials(): Ga4Runtime {
+  return {
+    config: configFromEnv({}),
+    audit: { record: async () => {} },
+    client: async () => {
+      throw new Ga4Error(
+        "CREDENTIALS_MISSING",
+        "No Google credentials found. Locations checked:\n  - none",
+        "Save your service-account key as GA4_CREDENTIALS: paste the file's contents, or give " +
+          "its path. Run `doctor` for a step-by-step check of what is still missing.",
+      );
+    },
+    principal: () => undefined,
+    probes: () => [],
+    resolveProperty: () => {
+      throw new Ga4Error(
+        "NO_PROPERTY",
+        "No GA4 property specified, and no default is configured.",
+        "Pass property_id, or set the GA4_PROPERTY_ID environment variable.",
+      );
+    },
+    metadata: async () => ({ dimensions: [], metrics: [] }),
+    userScopedCustomDimensions: async () => new Set<string>(),
+  };
+}
+
+/**
+ * Runs dispatch against a runtime (fakeRuntime() by default) and reduces the
+ * outcome to an exit code the same way main()'s own catch block does. Used
+ * instead of main() itself whenever a test needs to get past property
+ * resolution, or needs a runtime that fails in a specific way: main() builds
  * its runtime from real credential resolution (src/auth/credentials.ts falls
  * back to the real home directory regardless of the env object a test passes
- * in), so any test driving main() with a valid --property reaches
- * runtime.client() and, on a machine with real Google Application Default
- * Credentials on disk, makes a real network request. dispatch() with
- * fakeRuntime() cannot do that: none of its methods ever resolve a real
- * credential.
+ * in), so any test driving main() with a valid --property, or with no
+ * credentials configured at all, reaches runtime.client() and, on a machine
+ * with real Google Application Default Credentials on disk, makes a real
+ * network request. dispatch() with a hand-written runtime cannot do that:
+ * none of its methods ever resolve a real credential.
  */
-async function dispatchExitCode(parsed: CommandArgs): Promise<{ code: number; err: string }> {
-  const { runtime } = fakeRuntime();
+async function dispatchExitCode(
+  parsed: CommandArgs,
+  runtime: Ga4Runtime = fakeRuntime().runtime,
+): Promise<{ code: number; err: string; result: string }> {
   try {
-    await dispatch(runtime, parsed, {});
-    return { code: EXIT.OK, err: "" };
+    const result = await dispatch(runtime, parsed, {});
+    return { code: EXIT.OK, err: "", result };
   } catch (error) {
     if (error instanceof UsageError) {
-      return { code: EXIT.BAD_INPUT, err: error.message };
+      return { code: EXIT.BAD_INPUT, err: error.message, result: "" };
     }
     const named = diagnose(error);
-    return { code: exitCodeFor(named), err: named.toString() };
+    return { code: exitCodeFor(named), err: named.toString(), result: "" };
   }
 }
 
@@ -167,16 +205,24 @@ describe("main", () => {
   });
 
   it("doctor --json exits 0 even though setup is incomplete: it succeeded at diagnosing", async () => {
-    // Runs through main() itself, not dispatch()+fakeRuntime(), specifically
-    // to exercise real credential resolution finding nothing: with no
-    // GA4_CREDENTIALS, no GOOGLE_APPLICATION_CREDENTIALS, and (on the machine
-    // this suite runs on) no real gcloud ADC file either, this deterministically
-    // reaches the no-credentials branch rather than a real Google request.
-    const c = capture();
-    const code = await main(["doctor", "--json"], {}, c.streams);
+    // Runs through dispatch() with runtimeWithNoCredentials(), not main()
+    // itself: main() resolves credentials for real, which falls back to the
+    // real home directory regardless of the env object a test passes in, so
+    // a real main() call here could find a real gcloud ADC file on a machine
+    // that has one and make a real Google request. runDiagnose catches
+    // client()'s rejection internally and returns normally (it does not
+    // rethrow), so dispatch() resolves here rather than throwing, exactly as
+    // it would with the real runtime in the same situation; reducing that
+    // through the same exit-code logic main()'s own catch block uses (via
+    // dispatchExitCode) is what proves the exit code would be 0, not 3,
+    // without ever touching a filesystem or the network.
+    const { code, err, result } = await dispatchExitCode(
+      { kind: "command", command: "doctor", positional: [], flags: { json: true } },
+      runtimeWithNoCredentials(),
+    );
     expect(code).toBe(0);
-    expect(c.err.join("")).toBe("");
-    const state = JSON.parse(c.out.join("")) as { ok: boolean; blocked_on: string };
+    expect(err).toBe("");
+    const state = JSON.parse(result) as { ok: boolean; blocked_on: string };
     expect(state.ok).toBe(false);
     expect(state.blocked_on).toBe("no_credentials");
   });
@@ -223,6 +269,15 @@ describe("--json", () => {
     expect(result).toMatch(/^## GA4 setup check/);
   });
 
+  it("--json=false selects markdown, not JSON: presence is not the same question as value", async () => {
+    // Regression guard: flags.json !== undefined would treat --json=false
+    // (a string, "false") as truthy, since any given value is "present".
+    const { runtime } = fakeRuntime();
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: "false" } };
+    const result = await dispatch(runtime, parsed, {});
+    expect(result).toMatch(/^## GA4 setup check/);
+  });
+
   it("properties --json returns the operation's structured details", async () => {
     const { runtime } = fakeRuntime();
     const parsed: CommandArgs = { kind: "command", command: "properties", positional: [], flags: { json: true } };
@@ -230,7 +285,9 @@ describe("--json", () => {
     expect(JSON.parse(result)).toEqual({ properties: [] });
   });
 
-  it("report --json returns structured details instead of a markdown table", async () => {
+  it("report --json returns the actual figures, not only metadata about them", async () => {
+    // --json exists for exactly the case a figure must be computed from; a
+    // payload with propertyId and counts but no numbers cannot serve that.
     const { runtime } = fakeRuntime();
     const parsed: CommandArgs = {
       kind: "command",
@@ -239,9 +296,11 @@ describe("--json", () => {
       flags: { json: true, property: "123456789" },
     };
     const result = await dispatch(runtime, parsed, {});
-    const details = JSON.parse(result) as { propertyId: string };
+    const details = JSON.parse(result) as { propertyId: string; rows: Array<Record<string, string>> };
     expect(details.propertyId).toBe("123456789");
     expect(result).not.toContain("|");
+    // fakeRuntime's stubbed response is one row: pagePath "/x", activeUsers "1".
+    expect(details.rows).toEqual([{ pagePath: "/x", activeUsers: "1" }]);
   });
 });
 

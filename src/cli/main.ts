@@ -205,6 +205,22 @@ async function propertiesToOffer(runtime: Ga4Runtime): Promise<Array<{ id: strin
 }
 
 /**
+ * `--json`'s value as the boolean it is: true for a bare `--json` (parseArgs
+ * hands that back as the literal boolean `true`) or an explicit truthy
+ * spelling, false when the flag was not given at all or was explicitly
+ * turned off. `--json=false` must select markdown, not JSON: a value merely
+ * being *present* is not the same question as what it says. Same true/false
+ * spellings src/config.ts's isTrue/isFalse already use, for one convention
+ * across the codebase.
+ */
+function jsonFlag(flags: Flags): boolean {
+  const value = flags.json;
+  if (value === undefined) return false;
+  if (typeof value === "boolean") return value;
+  return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
+}
+
+/**
  * Converts each command's flags into the operation's own parameter object and
  * returns its markdown, or with `--json`, its structured details instead.
  * Kept in this file, not split out: this mapping is what a reviewer most
@@ -216,7 +232,7 @@ export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: N
   // is touched regardless of which branch runs below (src/cli/main.test.ts's
   // "every KNOWN_FLAGS entry reaches a real field" suite checks that every
   // declared flag is actually read).
-  const json = flags.json !== undefined;
+  const json = jsonFlag(flags);
   switch (command) {
     case "doctor": {
       const result = await runDiagnose(runtime, {});

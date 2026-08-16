@@ -30,6 +30,14 @@ export type FormattedReport = {
   rowsAvailable: number;
   redactions: number;
   caveats: string[];
+  /**
+   * The same formatted, redacted values the markdown table shows, addressed
+   * by field name instead of column position, so `--json` has an answer that
+   * is not "re-parse a markdown table". Redaction and metric formatting both
+   * already happened before this is built: this is not a second, separate
+   * path back to a raw cell.
+   */
+  rows: Array<Record<string, string>>;
 };
 
 const DEFAULT_MAX_ROWS = 100;
@@ -259,6 +267,7 @@ export function formatReport(
     rowsShown: rows.length,
     rowsAvailable: response.rowCount ?? allRows.length,
     redactions,
+    rows: body.map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""]))),
     caveats,
   };
 }

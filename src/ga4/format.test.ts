@@ -49,6 +49,18 @@ describe("formatReport", () => {
     expect(formatReport(report(), { title: "t", redaction }).markdown).toContain("65.4%");
   });
 
+  it("returns rows as header-keyed records, not only as markdown", () => {
+    // --json's whole reason to exist is answering a figure without an agent
+    // re-parsing a markdown table. The structured rows are the same
+    // formatted, redacted values the table shows, just addressable by field
+    // name instead of by column position.
+    const result = formatReport(report(), { title: "t", redaction });
+    expect(result.rows).toEqual([
+      { pagePath: "/pricing", screenPageViews: "12,480", engagementRate: "65.4%" },
+      { pagePath: "/blog", screenPageViews: "980", engagementRate: "41.0%" },
+    ]);
+  });
+
   it("humanises a duration", () => {
     const result = formatReport(
       report({
@@ -123,6 +135,9 @@ describe("redaction in rendered output", () => {
     );
     expect(result.markdown).not.toContain("ada@example.com");
     expect(result.redactions).toBeGreaterThan(0);
+    // The structured rows --json returns are the same redacted values as the
+    // markdown table, not a separate, unredacted path back to the raw cell.
+    expect(JSON.stringify(result.rows)).not.toContain("ada@example.com");
   });
 
   it("tells the reader that masking happened", () => {

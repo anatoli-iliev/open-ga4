@@ -110,12 +110,22 @@ export async function runFields(
 }
 
 /**
+ * One of runDiagnose's five checks, stable across a reword of `label`
+ * (display text somebody will reword). src/setup/state.ts matches on this,
+ * not on `label`, for exactly one decision: whether a later check proves
+ * reports work despite a disabled Admin API. A label match there would
+ * silently break the day the label's wording changed.
+ */
+export type CheckId = "credentials" | "admin_api" | "property_selection" | "data_api_report" | "privacy_settings";
+
+/**
  * `code` is the Ga4Error code behind a "fail", when there was one. It is what
  * src/setup/state.ts keys on to build `doctor --json`'s machine-readable
  * state: undefined for a check that is not error-driven at all (the privacy
  * settings check below never sets it), present for everything else.
  */
 export type Check = {
+  id: CheckId;
   label: string;
   status: "pass" | "fail" | "skip";
   detail: string;
@@ -204,6 +214,7 @@ export async function runDiagnose(
     const probes = runtime.probes();
     const used = probes.find((probe) => probe.status === "used");
     checks.push({
+      id: "credentials",
       label: "Google credentials",
       status: "pass",
       // used.path is the real path once a credential is confirmed to have
@@ -218,6 +229,7 @@ export async function runDiagnose(
   } catch (error) {
     const named = diagnose(error, { principal: runtime.principal() });
     checks.push({
+      id: "credentials",
       label: "Google credentials",
       status: "fail",
       detail: named.message,
@@ -233,6 +245,7 @@ export async function runDiagnose(
     const listed = await runProperties(runtime, {}, signal);
     properties = (listed.details as { properties: PropertyRow[] }).properties;
     checks.push({
+      id: "admin_api",
       label: "Admin API and property access",
       status: "pass",
       detail: `${properties.length} propert${properties.length === 1 ? "y" : "ies"} reachable`,
@@ -240,6 +253,7 @@ export async function runDiagnose(
   } catch (error) {
     const named = diagnose(error, { principal: runtime.principal() });
     checks.push({
+      id: "admin_api",
       label: "Admin API and property access",
       status: "fail",
       detail: named.message,
@@ -255,6 +269,7 @@ export async function runDiagnose(
   } catch (error) {
     const named = diagnose(error);
     checks.push({
+      id: "property_selection",
       label: "Property selection",
       status: "fail",
       detail: named.message,
@@ -276,6 +291,7 @@ export async function runDiagnose(
       );
       const users = response.rows?.[0]?.metricValues?.[0]?.value ?? "0";
       checks.push({
+        id: "data_api_report",
         label: "Data API report",
         status: "pass",
         detail: `property ${propertyId} returned ${users} active users over the last 7 days`,
@@ -290,6 +306,7 @@ export async function runDiagnose(
     } catch (error) {
       const named = diagnose(error, { principal: runtime.principal(), propertyId });
       checks.push({
+        id: "data_api_report",
         label: "Data API report",
         status: "fail",
         detail: named.message,
@@ -302,6 +319,7 @@ export async function runDiagnose(
   // 4. Privacy posture, so it is visible rather than assumed.
   const { redaction, access } = runtime.config;
   checks.push({
+    id: "privacy_settings",
     label: "Privacy settings",
     status: redaction.enabled ? "pass" : "fail",
     detail: redaction.enabled
