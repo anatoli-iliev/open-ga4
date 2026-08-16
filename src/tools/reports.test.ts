@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveConfig } from "../config.js";
+import { configFromEnv } from "../config.js";
 import type { Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
 import { assertPropertyAllowed, normalizePropertyId } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
@@ -9,11 +9,11 @@ type Recorded = { propertyId: string; request: RunReportRequest };
 
 function stubRuntime(
   response: RunReportResponse = {},
-  configOverrides: Parameters<typeof resolveConfig>[0] = {},
+  envOverrides: Parameters<typeof configFromEnv>[0] = {},
 ): { runtime: Ga4Runtime; calls: Recorded[]; realtimeCalls: Recorded[] } {
   const calls: Recorded[] = [];
   const realtimeCalls: Recorded[] = [];
-  const config = resolveConfig({ propertyId: "123456789", ...configOverrides });
+  const config = configFromEnv({ GA4_PROPERTY_ID: "123456789", ...envOverrides });
 
   const client = {
     runReport: vi.fn(async (propertyId: string, request: RunReportRequest) => {
@@ -159,8 +159,7 @@ describe("ga4_report", () => {
 
   it("refuses a property outside the allowlist without calling Google", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE, {
-      propertyId: "123456789",
-      privacy: { propertyAllowlist: ["555000111"] },
+      GA4_PROPERTY_ALLOWLIST: "555000111",
     });
     await expect(reportTool(runtime).execute({ report: "top_pages" })).rejects.toThrow(
       /not in this plugin's allowlist/,
@@ -225,8 +224,7 @@ describe("ga4_query", () => {
 
   it("allows it once explicitly opted in", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE, {
-      propertyId: "123456789",
-      privacy: { allowUserIdentifyingDimensions: true },
+      GA4_ALLOW_USER_DIMENSIONS: "true",
     });
     await queryTool(runtime).execute({ metrics: ["sessions"], dimensions: ["userId"] });
     expect(calls).toHaveLength(1);

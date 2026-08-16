@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "./config.js";
+import { configFromEnv } from "./config.js";
 import { createRuntime } from "./runtime.js";
 
 describe("resolveProperty", () => {
-  const runtime = createRuntime({ config: resolveConfig({ propertyId: "123456789" }) });
+  const runtime = createRuntime({ config: configFromEnv({ GA4_PROPERTY_ID: "123456789" }) });
 
   it("falls back to the configured default", () => {
     expect(runtime.resolveProperty()).toBe("123456789");
@@ -19,9 +19,9 @@ describe("resolveProperty", () => {
 
   it("enforces the allowlist", () => {
     const restricted = createRuntime({
-      config: resolveConfig({
-        propertyId: "123456789",
-        privacy: { propertyAllowlist: ["555000111"] },
+      config: configFromEnv({
+        GA4_PROPERTY_ID: "123456789",
+        GA4_PROPERTY_ALLOWLIST: "555000111",
       }),
     });
     expect(() => restricted.resolveProperty()).toThrow(/not in this plugin's allowlist/);
@@ -29,7 +29,7 @@ describe("resolveProperty", () => {
   });
 
   it("names the fix when there is no property at all", () => {
-    const bare = createRuntime({ config: resolveConfig({}) });
+    const bare = createRuntime({ config: configFromEnv({}) });
     const error = (() => {
       try {
         bare.resolveProperty();
@@ -47,7 +47,7 @@ describe("resolveProperty", () => {
 describe("credential loading", () => {
   it("does not touch credentials until a tool actually needs them", async () => {
     const env = { GOOGLE_APPLICATION_CREDENTIALS: "/nope/missing.json" };
-    const runtime = createRuntime({ config: resolveConfig({}), env });
+    const runtime = createRuntime({ config: configFromEnv({}), env });
     // Constructing the runtime and resolving a property must not throw, even
     // though the credential path is unusable.
     expect(runtime.resolveProperty("123456789")).toBe("123456789");
@@ -55,16 +55,19 @@ describe("credential loading", () => {
   });
 
   it("reports every location it checked when nothing is found", async () => {
+    // configFromEnv never sets credentialsPath (see config.ts); a configured
+    // credential location is exercised here through env.GOOGLE_APPLICATION_CREDENTIALS
+    // instead, which is the only credential-location input createRuntime still accepts.
     const runtime = createRuntime({
-      config: resolveConfig({ credentials: "/nope/a.json" }),
-      env: {},
+      config: configFromEnv({}),
+      env: { GOOGLE_APPLICATION_CREDENTIALS: "/nope/a.json" },
     });
     await expect(runtime.client()).rejects.toThrow(/No Google credentials found/);
-    await expect(runtime.client()).rejects.toThrow(/plugin config \(credentials\)/);
+    await expect(runtime.client()).rejects.toThrow(/GOOGLE_APPLICATION_CREDENTIALS/);
   });
 
   it("points at SETUP.md and ga4_diagnose rather than a bare failure", async () => {
-    const runtime = createRuntime({ config: resolveConfig({}), env: {} });
+    const runtime = createRuntime({ config: configFromEnv({}), env: {} });
     const error = await runtime.client().then(
       () => undefined,
       (caught: { fix: string }) => caught,
@@ -75,8 +78,8 @@ describe("credential loading", () => {
 
   it("retries discovery rather than caching a rejection for the process lifetime", async () => {
     const runtime = createRuntime({
-      config: resolveConfig({ credentials: "/keys/absent.json" }),
-      env: {},
+      config: configFromEnv({}),
+      env: { GOOGLE_APPLICATION_CREDENTIALS: "/keys/absent.json" },
     });
 
     // A rejected promise must not be memoised: someone who fixes their config
