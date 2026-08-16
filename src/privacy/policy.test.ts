@@ -61,9 +61,9 @@ describe("assertDimensionsAllowed", () => {
     );
   });
 
-  it("names the exact config key that turns the block off", () => {
+  it("names the exact environment variable that turns the block off", () => {
     expect(() => assertDimensionsAllowed(["userId"], DEFAULT_ACCESS_POLICY)).toThrow(
-      /plugins\.entries\.ga4\.config\.privacy\.allowUserIdentifyingDimensions/,
+      /GA4_ALLOW_USER_DIMENSIONS/,
     );
   });
 

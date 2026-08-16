@@ -35,13 +35,6 @@ describe("exitCodeFor", () => {
     }
   });
 
-  it("maps NO_CREDENTIALS to exit 3, not exit 4", () => {
-    // src/runtime.ts still raises NO_CREDENTIALS (a later task collapses it
-    // into CREDENTIALS_MISSING). Until then this must not read as "Google
-    // refused a request" when the real problem is an unfinished setup.
-    expect(exitCodeFor(ga4Error("NO_CREDENTIALS"))).toBe(EXIT.SETUP_INCOMPLETE);
-  });
-
   it("maps an invalid request to exit 2, not exit 4", () => {
     expect(exitCodeFor(ga4Error("INVALID_REQUEST"))).toBe(EXIT.BAD_INPUT);
   });

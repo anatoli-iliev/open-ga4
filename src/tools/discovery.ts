@@ -109,11 +109,28 @@ export async function runFields(
   };
 }
 
-type Check = {
+/**
+ * One of runDiagnose's five checks, stable across a reword of `label`
+ * (display text somebody will reword). src/setup/state.ts matches on this,
+ * not on `label`, for exactly one decision: whether a later check proves
+ * reports work despite a disabled Admin API. A label match there would
+ * silently break the day the label's wording changed.
+ */
+export type CheckId = "credentials" | "admin_api" | "property_selection" | "data_api_report" | "privacy_settings";
+
+/**
+ * `code` is the Ga4Error code behind a "fail", when there was one. It is what
+ * src/setup/state.ts keys on to build `doctor --json`'s machine-readable
+ * state: undefined for a check that is not error-driven at all (the privacy
+ * settings check below never sets it), present for everything else.
+ */
+export type Check = {
+  id: CheckId;
   label: string;
   status: "pass" | "fail" | "skip";
   detail: string;
   fix?: string;
+  code?: string;
 };
 
 function renderChecks(checks: Check[], extra: string[]): string {
@@ -197,19 +214,27 @@ export async function runDiagnose(
     const probes = runtime.probes();
     const used = probes.find((probe) => probe.status === "used");
     checks.push({
+      id: "credentials",
       label: "Google credentials",
       status: "pass",
-      detail: `loaded from ${used?.label ?? "an unknown source"}${
+      // used.path is the real path once a credential is confirmed to have
+      // loaded successfully (see resolveCredentials in auth/credentials.ts);
+      // naming it is what makes a stale path pointing at the wrong key file
+      // findable, which the label alone (just "GA4_CREDENTIALS (file)")
+      // cannot say.
+      detail: `loaded from ${used?.label ?? "an unknown source"}${used?.path ? ` at ${used.path}` : ""}${
         runtime.principal() ? `, service account ${runtime.principal()}` : ""
       }`,
     });
   } catch (error) {
     const named = diagnose(error, { principal: runtime.principal() });
     checks.push({
+      id: "credentials",
       label: "Google credentials",
       status: "fail",
       detail: named.message,
       fix: named.fix,
+      code: named.code,
     });
     return { markdown: renderChecks(checks, extra), details: { ok: false, checks } };
   }
@@ -220,6 +245,7 @@ export async function runDiagnose(
     const listed = await runProperties(runtime, {}, signal);
     properties = (listed.details as { properties: PropertyRow[] }).properties;
     checks.push({
+      id: "admin_api",
       label: "Admin API and property access",
       status: "pass",
       detail: `${properties.length} propert${properties.length === 1 ? "y" : "ies"} reachable`,
@@ -227,10 +253,12 @@ export async function runDiagnose(
   } catch (error) {
     const named = diagnose(error, { principal: runtime.principal() });
     checks.push({
+      id: "admin_api",
       label: "Admin API and property access",
       status: "fail",
       detail: named.message,
       fix: named.fix,
+      code: named.code,
     });
   }
 
@@ -241,10 +269,12 @@ export async function runDiagnose(
   } catch (error) {
     const named = diagnose(error);
     checks.push({
+      id: "property_selection",
       label: "Property selection",
       status: "fail",
       detail: named.message,
       fix: named.fix,
+      code: named.code,
     });
   }
 
@@ -261,6 +291,7 @@ export async function runDiagnose(
       );
       const users = response.rows?.[0]?.metricValues?.[0]?.value ?? "0";
       checks.push({
+        id: "data_api_report",
         label: "Data API report",
         status: "pass",
         detail: `property ${propertyId} returned ${users} active users over the last 7 days`,
@@ -275,10 +306,12 @@ export async function runDiagnose(
     } catch (error) {
       const named = diagnose(error, { principal: runtime.principal(), propertyId });
       checks.push({
+        id: "data_api_report",
         label: "Data API report",
         status: "fail",
         detail: named.message,
         fix: named.fix,
+        code: named.code,
       });
     }
   }
@@ -286,6 +319,7 @@ export async function runDiagnose(
   // 4. Privacy posture, so it is visible rather than assumed.
   const { redaction, access } = runtime.config;
   checks.push({
+    id: "privacy_settings",
     label: "Privacy settings",
     status: redaction.enabled ? "pass" : "fail",
     detail: redaction.enabled
@@ -297,7 +331,7 @@ export async function runDiagnose(
       : "redaction is turned OFF, so personal data in URLs will reach the model",
     fix: redaction.enabled
       ? undefined
-      : "Remove plugins.entries.ga4.config.privacy.redact, or set it to true.",
+      : "Unset the GA4_REDACT environment variable, or set it to a truthy value (1, true, yes, or on).",
   });
 
   if (properties.length > 0) {

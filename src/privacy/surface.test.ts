@@ -16,6 +16,27 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(here, "../../dist");
+const repoRoot = path.resolve(here, "../..");
+
+/** Hosts the plugin actually opens a connection to. The runtime guarantee is
+ * enforced by assertAllowedUrl in ga4/http.ts and tested there; the scan
+ * below is defence in depth against a hardcoded URL reaching the bundle
+ * unreviewed. */
+const CONTACTED = ["analyticsadmin.googleapis.com", "analyticsdata.googleapis.com", "oauth2.googleapis.com"];
+
+/**
+ * Hosts that appear only as text shown to a human: a link in a "here is how
+ * to fix it" message, or the OAuth scope identifier. Never fetched. Adding to
+ * this list is a deliberate, reviewable decision: README.md's egress
+ * paragraph names every one of these verbatim, and the test below pins that
+ * paragraph to this exact array, so the two cannot silently drift apart.
+ */
+const REFERENCED_ONLY = [
+  "www.googleapis.com", // inside the analytics.readonly scope string
+  "console.cloud.google.com", // "enable the API here" link in errors.ts
+  "console.developers.google.com", // same link, as Google returns it in Help details
+  "analytics.google.com", // Property access management link in setup/state.ts's no_property_grant state
+];
 
 async function readDistSources(): Promise<Array<{ file: string; text: string }>> {
   const out: Array<{ file: string; text: string }> = [];
@@ -60,21 +81,7 @@ describe("the shipped bundle", () => {
   });
 
   it("mentions no URL that is neither contacted nor a documented signpost", async () => {
-    // Hosts the plugin actually opens a connection to. The runtime guarantee is
-    // enforced by assertAllowedUrl in ga4/http.ts and tested there; this scan is
-    // defence in depth against a hardcoded URL reaching the bundle unreviewed.
-    const contacted = ["analyticsadmin.googleapis.com", "analyticsdata.googleapis.com", "oauth2.googleapis.com"];
-
-    // Hosts that appear only as text shown to a human: a link in a "here is
-    // how to fix it" message, or the OAuth scope identifier. Never fetched.
-    // Adding to this list is a deliberate, reviewable decision.
-    const referencedOnly = [
-      "www.googleapis.com", // inside the analytics.readonly scope string
-      "console.cloud.google.com", // "enable the API here" link in errors.ts
-      "console.developers.google.com", // same link, as Google returns it in Help details
-    ];
-
-    const allowed = new Set([...contacted, ...referencedOnly]);
+    const allowed = new Set([...CONTACTED, ...REFERENCED_ONLY]);
     const hosts = new Set<string>();
     for (const { text } of await readDistSources()) {
       for (const match of text.matchAll(/https:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) {
@@ -83,6 +90,26 @@ describe("the shipped bundle", () => {
     }
 
     expect([...hosts].filter((host) => !allowed.has(host))).toEqual([]);
+  });
+
+  it("keeps README.md's egress paragraph naming exactly these hosts", async () => {
+    // Pins the paragraph the README publishes verbatim to CONTACTED and
+    // REFERENCED_ONLY above, so the next addition to either array is
+    // impossible to make without updating that prose in the same change:
+    // the drift this repository has already suffered twice.
+    const readme = await readFile(path.join(repoRoot, "README.md"), "utf8");
+    const start = readme.indexOf("**An egress allowlist enforced in code.**");
+    const end = readme.indexOf("**Read-only by scope.**");
+    expect(start, "README.md's egress-allowlist bullet was not found").toBeGreaterThan(-1);
+    expect(end, "README.md's read-only-by-scope bullet was not found").toBeGreaterThan(start);
+    const paragraph = readme.slice(start, end);
+
+    const named = new Set<string>();
+    for (const match of paragraph.matchAll(/`([a-z0-9.-]+\.[a-z]{2,})`/gi)) {
+      named.add(match[1]!.toLowerCase());
+    }
+
+    expect(named).toEqual(new Set([...CONTACTED, ...REFERENCED_ONLY]));
   });
 
   it("writes nothing to disk outside the audit log", async () => {

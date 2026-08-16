@@ -246,6 +246,60 @@ describe("GA4_CREDENTIALS", () => {
     expect(JSON.stringify(result.probes)).not.toContain("PRIVATE KEY");
   });
 
+  // A value that parsed as a valid credential file is provably a real path,
+  // not a mis-pasted key: only at that point does the placeholder stop
+  // earning its keep, because there is nothing left for it to protect
+  // against and something real for it to cost (which key file was used, the
+  // one thing ga4_diagnose needs to say for a stale-path failure to be
+  // findable).
+  it("shows the real path once the value is confirmed to be a credential file", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async () => SERVICE_ACCOUNT,
+    });
+    expect(result.ok).toBe(true);
+    const probe = result.probes.find((p) => p.label === "GA4_CREDENTIALS (file)");
+    expect(probe).toMatchObject({ status: "used", path: "/keys/sa.json" });
+  });
+
+  it("keeps the placeholder path for every failure status: absent, unreadable, and invalid", async () => {
+    const absent = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async () => notFound(),
+    });
+    expect(absent.probes[0]).toMatchObject({
+      label: "GA4_CREDENTIALS (file)",
+      status: "absent",
+      path: "(GA4_CREDENTIALS value)",
+    });
+
+    const unreadable = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async () => {
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      },
+    });
+    expect(unreadable.probes[0]).toMatchObject({
+      label: "GA4_CREDENTIALS (file)",
+      status: "unreadable",
+      path: "(GA4_CREDENTIALS value)",
+    });
+
+    const invalid = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/sa.json" },
+      home: "/home/ada",
+      readFileImpl: async () => "{oops",
+    });
+    expect(invalid.probes[0]).toMatchObject({
+      label: "GA4_CREDENTIALS (file)",
+      status: "invalid",
+      path: "(GA4_CREDENTIALS value)",
+    });
+  });
+
   // The file route shares parseCredentialFile with the pasted route, but
   // builds its probe through a different code path in resolveCredentials (the
   // candidates loop, not the inline branch), so it is checked on its own

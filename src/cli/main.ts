@@ -3,8 +3,9 @@ import { diagnose } from "../ga4/errors.js";
 import { FILTER_OPERATORS, type FilterCondition, type FilterOperator } from "../ga4/filters.js";
 import { redactText } from "../privacy/redact.js";
 import { createRuntime, type Ga4Runtime } from "../runtime.js";
+import { setupStateFrom } from "../setup/state.js";
 import { runCompare, runQuery, runRealtime, runReport } from "../tools/reports.js";
-import { runDiagnose, runFields, runProperties } from "../tools/discovery.js";
+import { runDiagnose, runFields, runProperties, type Check } from "../tools/discovery.js";
 import { parseArgs, UsageError, type ParsedArgs } from "./args.js";
 import { EXIT, exitCodeFor } from "./exit.js";
 import type { Streams } from "./render.js";
@@ -175,18 +176,82 @@ function requirePositional(positional: string[], example: string): string {
   return value;
 }
 
+/** Every operation returns `{ markdown, details }`; `--json` selects `details` over `markdown`. */
+function output(result: { markdown: string; details: unknown }, json: boolean): string {
+  return json ? JSON.stringify(result.details, null, 2) : result.markdown;
+}
+
+/**
+ * A fresh property listing for `no_property_selected`: the one state where
+ * the agent must list the options and ask, rather than guess which property
+ * the user meant (a confident answer about the wrong website is the worst
+ * outcome available here). Fetched again rather than reused from
+ * runDiagnose's own check, because that check may have found nothing for a
+ * reason that has since cleared.
+ *
+ * Failing to enumerate is not itself a setup blocker: that already happened,
+ * one way or another, before setupStateFrom ever produced
+ * "no_property_selected". So a failure here degrades to an empty list
+ * rather than throwing or changing `blocked_on`.
+ */
+async function propertiesToOffer(runtime: Ga4Runtime): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const { details } = await runProperties(runtime, {});
+    const { properties } = details as { properties: Array<{ id: string; name: string }> };
+    return properties.map((property) => ({ id: property.id, name: property.name }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * `--json`'s value as the boolean it is: true for a bare `--json` (parseArgs
+ * hands that back as the literal boolean `true`) or an explicit truthy
+ * spelling, false when the flag was not given at all or was explicitly
+ * turned off. `--json=false` must select markdown, not JSON: a value merely
+ * being *present* is not the same question as what it says. Same true/false
+ * spellings src/config.ts's isTrue/isFalse already use, for one convention
+ * across the codebase.
+ */
+function jsonFlag(flags: Flags): boolean {
+  const value = flags.json;
+  if (value === undefined) return false;
+  if (typeof value === "boolean") return value;
+  return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
+}
+
 /**
  * Converts each command's flags into the operation's own parameter object and
- * returns its markdown. Kept in this file, not split out: this mapping is
- * what a reviewer most needs to see in one place.
+ * returns its markdown, or with `--json`, its structured details instead.
+ * Kept in this file, not split out: this mapping is what a reviewer most
+ * needs to see in one place.
  */
 export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: NodeJS.ProcessEnv): Promise<string> {
   const { command, positional, flags } = parsed;
+  // Read unconditionally, before the switch, so every command's flags object
+  // is touched regardless of which branch runs below (src/cli/main.test.ts's
+  // "every KNOWN_FLAGS entry reaches a real field" suite checks that every
+  // declared flag is actually read).
+  const json = jsonFlag(flags);
   switch (command) {
-    case "doctor":
-      return (await runDiagnose(runtime, {})).markdown;
+    case "doctor": {
+      const result = await runDiagnose(runtime, {});
+      if (json) {
+        // doctor's own `details` is the raw Check[] the markdown checklist
+        // renders from: useful for a person, but still a wall of everything
+        // that was checked. setupStateFrom reduces that to the one blocking
+        // step, which is what --json is for on this command specifically.
+        const { checks } = result.details as { checks: Check[] };
+        const state = setupStateFrom(checks, runtime.principal());
+        if (state.blocked_on === "no_property_selected") {
+          state.properties = await propertiesToOffer(runtime);
+        }
+        return JSON.stringify(state, null, 2);
+      }
+      return result.markdown;
+    }
     case "report":
-      return (await runReport(runtime, {
+      return output(await runReport(runtime, {
         report: requirePositional(positional, "report overview"),
         property_id: str(flags, "property"),
         date_range: str(flags, "range"),
@@ -194,22 +259,22 @@ export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: N
         end_date: str(flags, "end"),
         limit: num(flags, "limit"),
         filter_contains: str(flags, "filter"),
-      })).markdown;
+      }), json);
     case "compare":
-      return (await runCompare(runtime, {
+      return output(await runCompare(runtime, {
         report: requirePositional(positional, "compare overview"),
         property_id: str(flags, "property"),
         date_range: str(flags, "range"),
         limit: num(flags, "limit"),
-      })).markdown;
+      }), json);
     case "live":
-      return (await runRealtime(runtime, {
+      return output(await runRealtime(runtime, {
         breakdown: positional[0],
         property_id: str(flags, "property"),
         limit: num(flags, "limit"),
-      })).markdown;
+      }), json);
     case "query":
-      return (await runQuery(runtime, {
+      return output(await runQuery(runtime, {
         metrics: csv(flags, "metrics") ?? [],
         dimensions: csv(flags, "dimensions"),
         property_id: str(flags, "property"),
@@ -219,15 +284,15 @@ export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: N
         filters: filterFlag(flags),
         order_by: str(flags, "sort"),
         limit: num(flags, "limit"),
-      })).markdown;
+      }), json);
     case "fields":
-      return (await runFields(runtime, {
+      return output(await runFields(runtime, {
         query: requirePositional(positional, "fields sessions"),
         kind: kindFlag(flags),
         property_id: str(flags, "property"),
-      })).markdown;
+      }), json);
     case "properties":
-      return (await runProperties(runtime, {})).markdown;
+      return output(await runProperties(runtime, {}), json);
     default:
       // Unreachable: parseArgs validates command against COMMANDS before
       // returning a "command" result. Kept so the switch satisfies the

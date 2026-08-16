@@ -82,6 +82,14 @@ function present(
       rowsShown: formatted.rowsShown,
       rowsAvailable: formatted.rowsAvailable,
       redactions: formatted.redactions,
+      // The actual figures, already formatted and redacted by formatReport,
+      // so --json has an answer that is not "re-parse the markdown table".
+      rows: formatted.rows,
+      // The same untrusted-input warning the markdown table's lead-in gives,
+      // carried alongside rows rather than left implicit or buried in
+      // caveats: dimension values are visitor-authored, and redaction alone
+      // does not mark that for a consumer reading only the JSON.
+      rowsWarning: formatted.rowsWarning,
       caveats: formatted.caveats,
     },
   };

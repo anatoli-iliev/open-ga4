@@ -46,8 +46,10 @@ const NORMALIZE_ID_COMMANDS = new Set(["report", "compare", "live"]);
  * the operation's parameter type in src/tools/reports.ts or
  * src/tools/discovery.ts (checked by src/cli/main.test.ts's "every KNOWN_FLAGS
  * entry reaches a real field" suite), with one deliberate exception: "json"
- * is reserved to select markdown vs JSON output in main() itself (wired up in
- * a later task), not a field on any parameter type, so it never becomes one.
+ * selects markdown vs JSON output in dispatch itself (src/cli/main.ts), not a
+ * field on any parameter type, so it never becomes one. Every operation here
+ * returns structured `details` alongside its markdown, so every command that
+ * declares "json" can produce it; none needed to drop the flag instead.
  * A name listed here that dispatch never reads is exactly the defect
  * README.md calls out in a competing tool: a parameter that parses
  * successfully and is then silently dropped, rather than raising or doing

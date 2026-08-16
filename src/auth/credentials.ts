@@ -264,7 +264,15 @@ export async function resolveCredentials(
     }
     try {
       const credential = parseCredentialFile(contents, candidate.label);
-      probes.push({ ...shown, status: "used" });
+      // The placeholder above exists because this value could have been a
+      // mis-pasted key rather than a path; a value that just parsed as a
+      // valid credential file is provably neither. Showing the real path
+      // only here, on success, cannot leak key material the way a failure's
+      // path could, and hiding it unconditionally would cost every
+      // successful diagnosis its only way to say which key file was
+      // actually used, which matters most for a stale path pointing at the
+      // wrong file.
+      probes.push({ label: candidate.label, path: candidate.path, status: "used" });
       return { ok: true, credential, probes };
     } catch (error) {
       probes.push({ ...shown, status: "invalid", detail: describe(error) });

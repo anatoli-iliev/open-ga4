@@ -11,14 +11,12 @@ export const EXIT = {
 /**
  * Codes that mean "you have not finished setting this up", not "Google said no".
  *
- * Both CREDENTIALS_MISSING and NO_CREDENTIALS are listed. src/ga4/errors.ts
- * raises CREDENTIALS_MISSING; src/runtime.ts still raises the older
- * NO_CREDENTIALS. A later task collapses them into one, but until then a
- * missing-credentials failure must still land on exit 3, not exit 4.
+ * CREDENTIALS_MISSING is the single code for a missing credential: both
+ * src/ga4/errors.ts and src/runtime.ts raise it, so there is exactly one
+ * branch to reach here, not two.
  */
 const SETUP_CODES = new Set([
   "CREDENTIALS_MISSING",
-  "NO_CREDENTIALS",
   "CREDENTIALS_REJECTED",
   "CLOCK_SKEW",
   "DATA_API_DISABLED",
