@@ -55,6 +55,29 @@ describe("setupStateFrom", () => {
     }
   });
 
+  it("maps a code outside the taxonomy to unknown, never to quota", () => {
+    // Reporting an unclassifiable failure as quota exhaustion sends someone
+    // to wait out a limit that was never hit. UNEXPECTED and
+    // GOOGLE_SERVER_ERROR are both real codes diagnose() can return from the
+    // same "Data API report" call that also raises QUOTA_EXHAUSTED, but
+    // neither means quota.
+    for (const code of ["UNEXPECTED", "GOOGLE_SERVER_ERROR", "some_future_code_this_taxonomy_does_not_know"]) {
+      const state = setupStateFrom([fail("Data API report", code)]);
+      expect(state.blocked_on).toBe("unknown");
+    }
+  });
+
+  it("tells the agent to report the message rather than guess a fix, for an unknown code", () => {
+    const state = setupStateFrom([
+      { label: "Data API report", status: "fail" as const, detail: "server exploded", code: "GOOGLE_SERVER_ERROR" },
+    ]);
+    expect(state.blocked_on).toBe("unknown");
+    expect(state.next?.action).toContain("server exploded");
+    expect(state.next?.action.toLowerCase()).not.toContain("quota");
+    // Must not claim a cause: no URL, since none is known to be relevant.
+    expect(state.url).toBeUndefined();
+  });
+
   it("still blocks on a disabled Admin API when no later check proves reports work", () => {
     // The skip only applies when a *later* check passed. Here nothing after
     // it did (there is nothing after it at all), so it must still be the one

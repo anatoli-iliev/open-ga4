@@ -21,7 +21,8 @@ export type BlockedOn =
   | "no_property_grant"
   | "no_property_selected"
   | "wrong_property"
-  | "quota";
+  | "quota"
+  | "unknown";
 
 export const BLOCKED_ON_VALUES: readonly BlockedOn[] = [
   "ok",
@@ -34,6 +35,7 @@ export const BLOCKED_ON_VALUES: readonly BlockedOn[] = [
   "no_property_selected",
   "wrong_property",
   "quota",
+  "unknown",
 ];
 
 export type SetupState = {
@@ -66,13 +68,13 @@ function enableApiUrl(service: string): string {
  * because those are the only codes this taxonomy exists to describe.
  *
  * Anything else reaching here (a bare 5xx, an invalid request, a genuinely
- * unexpected error) is not a setup problem: it is a transient failure of the
- * same call ("Data API report") that also raises QUOTA_EXHAUSTED, and the
- * right action is the same as quota's: wait and try again. It is folded into
- * the quota bucket rather than invented a tenth bucket for, and the action
- * text says plainly that this is not necessarily quota.
+ * unexpected error) is not a setup problem this taxonomy recognizes, and it
+ * is not safe to guess one: reporting it as quota exhaustion sends someone to
+ * wait out a limit that was never hit. It gets its own "unknown" bucket
+ * instead, whose action is to relay the underlying message rather than to
+ * name a cause this code cannot support.
  */
-function mapped(code: string, principal?: string): Mapped {
+function mapped(code: string, principal?: string, detail?: string): Mapped {
   switch (code) {
     case "CREDENTIALS_MISSING":
       return {
@@ -138,16 +140,11 @@ function mapped(code: string, principal?: string): Mapped {
           paste: principal,
           role: "Viewer",
         },
-        // Deliberately no scheme: analytics.google.com is the real Google
-        // Analytics UI, but it is not on the reviewed host allowlist in
-        // src/privacy/surface.test.ts (that allowlist covers hosts this
-        // project contacts, plus a short, deliberately reviewed list of
-        // console.* links it prints; analytics.google.com is neither). A
-        // bare domain is not matched by that scan's "https://host" pattern,
-        // so it does not silently add a fourth host to a claim the README
-        // publishes verbatim. It is still a real, correct destination: any
-        // browser opens a bare domain exactly the same as one with a scheme.
-        url: "analytics.google.com/analytics/web/",
+        // analytics.google.com is on the reviewed, text-only host allowlist
+        // in src/privacy/surface.test.ts (never fetched, only ever printed
+        // for a person to open) and named in README.md's egress paragraph,
+        // both updated alongside this change.
+        url: "https://analytics.google.com/analytics/web/",
       };
     case "PROPERTY_NOT_FOUND":
       return {
@@ -182,12 +179,14 @@ function mapped(code: string, principal?: string): Mapped {
       };
     default:
       return {
-        blocked_on: "quota",
+        blocked_on: "unknown",
         next: {
           where: "Google Analytics",
-          action:
-            "Something unexpected happened talking to Google, not necessarily quota. Wait a " +
-            "moment and run doctor again; if it keeps happening, this is not a setup problem.",
+          action: detail
+            ? `This is not one of the setup problems doctor recognizes, and the cause is not ` +
+              `known: report the message rather than guessing a fix. Message: "${detail}"`
+            : "This is not one of the setup problems doctor recognizes, and the cause is not " +
+              "known: report the underlying message rather than guessing a fix.",
         },
       };
   }
@@ -220,7 +219,7 @@ export function setupStateFrom(checks: Check[], principal?: string): SetupState 
     if (check.code === "ADMIN_API_DISABLED" && laterCheckPassed(i)) {
       continue;
     }
-    const { blocked_on, next, url } = mapped(check.code, principal);
+    const { blocked_on, next, url } = mapped(check.code, principal, check.detail);
     return {
       ok: false,
       blocked_on,

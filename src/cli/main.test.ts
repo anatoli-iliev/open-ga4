@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { configFromEnv } from "../config.js";
-import type { Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
-import { diagnose } from "../ga4/errors.js";
+import type { AccountSummary, Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
+import { diagnose, Ga4Error } from "../ga4/errors.js";
 import { normalizePropertyId } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
 import { COMMANDS, KNOWN_FLAGS, UsageError } from "./args.js";
@@ -61,6 +61,48 @@ function fakeRuntime(): { runtime: Ga4Runtime; calls: Recorded[] } {
   };
 
   return { runtime, calls };
+}
+
+/**
+ * A runtime that lands doctor on `no_property_selected`: no default property
+ * configured, and runDiagnose's own Admin API check finds nothing (its
+ * `listAccountSummaries` call returns `[]` the first time). `secondCall`
+ * controls what a *second*, independent call returns: dispatch's own fresh
+ * listing, fetched to populate `properties` for the agent to offer, rather
+ * than reused from the first, empty one. Passing an Error makes that second
+ * call fail, to exercise the degrade-to-empty-list path.
+ */
+function runtimeStuckOnNoPropertySelected(secondCall: AccountSummary[] | Error): Ga4Runtime {
+  let calls = 0;
+  const client = {
+    listAccountSummaries: async () => {
+      calls += 1;
+      if (calls === 1) return [];
+      if (secondCall instanceof Error) throw secondCall;
+      return secondCall;
+    },
+    runReport: async () => ({ rows: [] }),
+  } as unknown as Ga4Client;
+
+  return {
+    config: configFromEnv({}),
+    audit: { record: async () => {} },
+    client: async () => client,
+    principal: () => "reader@example.iam.gserviceaccount.com",
+    probes: () => [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
+    resolveProperty: (explicit?: string) => {
+      if (!explicit) {
+        throw new Ga4Error(
+          "NO_PROPERTY",
+          "No GA4 property specified, and no default is configured.",
+          "Pass property_id, or set the GA4_PROPERTY_ID environment variable.",
+        );
+      }
+      return normalizePropertyId(explicit);
+    },
+    metadata: async () => ({ dimensions: [], metrics: [] }),
+    userScopedCustomDimensions: async () => new Set<string>(),
+  };
 }
 
 /**
@@ -145,8 +187,33 @@ describe("--json", () => {
     const { runtime } = fakeRuntime();
     const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: true } };
     const result = await dispatch(runtime, parsed, {});
-    const state = JSON.parse(result) as { ok: boolean; blocked_on: string; principal?: string };
+    const state = JSON.parse(result) as { ok: boolean; blocked_on: string; principal?: string; properties?: unknown };
     expect(state).toEqual({ ok: true, blocked_on: "ok", principal: "reader@example.iam.gserviceaccount.com" });
+    // Leaves properties absent for every state other than no_property_selected.
+    expect(state.properties).toBeUndefined();
+  });
+
+  it("populates properties for no_property_selected, fetched fresh rather than reused from runDiagnose's own check", async () => {
+    const runtime = runtimeStuckOnNoPropertySelected([
+      {
+        displayName: "Acme Inc",
+        propertySummaries: [{ property: "properties/111222333", displayName: "Marketing site" }],
+      },
+    ]);
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: true } };
+    const result = await dispatch(runtime, parsed, {});
+    const state = JSON.parse(result) as { blocked_on: string; properties?: Array<{ id: string; name: string }> };
+    expect(state.blocked_on).toBe("no_property_selected");
+    expect(state.properties).toEqual([{ id: "111222333", name: "Marketing site" }]);
+  });
+
+  it("degrades to an empty properties list when the fresh listing fails, without changing blocked_on", async () => {
+    const runtime = runtimeStuckOnNoPropertySelected(new Error("boom"));
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: true } };
+    const result = await dispatch(runtime, parsed, {});
+    const state = JSON.parse(result) as { blocked_on: string; properties?: Array<{ id: string; name: string }> };
+    expect(state.blocked_on).toBe("no_property_selected");
+    expect(state.properties).toEqual([]);
   });
 
   it("doctor without --json still returns the markdown checklist", async () => {

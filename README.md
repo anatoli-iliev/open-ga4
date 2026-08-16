@@ -73,12 +73,13 @@ Five steps here, eight in the click-by-click version, about ten minutes.
   test scans the built bundle for `https://` URLs and fails on any host that is neither one
   of those three nor on a short reviewed list of addresses that only ever appear as text:
   `console.cloud.google.com` and `console.developers.google.com`, which are the "enable the
-  API here" link printed in an error message, and `www.googleapis.com`, which appears
-  inside the OAuth scope identifier. Your credentials go to Google and to no third-party
-  service. The allowlist constrains which host the skill asks for, not what your system
-  does with the request: if OpenClaw or your machine is configured with an HTTP proxy or a
-  TLS-intercepting middlebox, this traffic traverses it exactly as all other OpenClaw
-  traffic does.
+  API here" link printed in an error message, `www.googleapis.com`, which appears inside
+  the OAuth scope identifier, and `analytics.google.com`, which is the Property access
+  management link printed for a missing grant. Your credentials go to Google and to no
+  third-party service. The allowlist constrains which host the skill asks for, not what
+  your system does with the request: if OpenClaw or your machine is configured with an
+  HTTP proxy or a TLS-intercepting middlebox, this traffic traverses it exactly as all
+  other OpenClaw traffic does.
 - **Read-only by scope.** The only scope requested is
   `https://www.googleapis.com/auth/analytics.readonly`, and a test asserts no other
   `googleapis.com/auth/` string exists in the shipped bundle.

@@ -182,6 +182,29 @@ function output(result: { markdown: string; details: unknown }, json: boolean): 
 }
 
 /**
+ * A fresh property listing for `no_property_selected`: the one state where
+ * the agent must list the options and ask, rather than guess which property
+ * the user meant (a confident answer about the wrong website is the worst
+ * outcome available here). Fetched again rather than reused from
+ * runDiagnose's own check, because that check may have found nothing for a
+ * reason that has since cleared.
+ *
+ * Failing to enumerate is not itself a setup blocker: that already happened,
+ * one way or another, before setupStateFrom ever produced
+ * "no_property_selected". So a failure here degrades to an empty list
+ * rather than throwing or changing `blocked_on`.
+ */
+async function propertiesToOffer(runtime: Ga4Runtime): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const { details } = await runProperties(runtime, {});
+    const { properties } = details as { properties: Array<{ id: string; name: string }> };
+    return properties.map((property) => ({ id: property.id, name: property.name }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Converts each command's flags into the operation's own parameter object and
  * returns its markdown, or with `--json`, its structured details instead.
  * Kept in this file, not split out: this mapping is what a reviewer most
@@ -203,7 +226,11 @@ export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: N
         // that was checked. setupStateFrom reduces that to the one blocking
         // step, which is what --json is for on this command specifically.
         const { checks } = result.details as { checks: Check[] };
-        return JSON.stringify(setupStateFrom(checks, runtime.principal()), null, 2);
+        const state = setupStateFrom(checks, runtime.principal());
+        if (state.blocked_on === "no_property_selected") {
+          state.properties = await propertiesToOffer(runtime);
+        }
+        return JSON.stringify(state, null, 2);
       }
       return result.markdown;
     }
