@@ -146,8 +146,8 @@ export function assertDimensionsAllowed(
   throw new PolicyError(
     `${blocked.join(", ")} ${blocked.length === 1 ? "identifies" : "identify"} individual people, ` +
       `so this plugin does not request ${blocked.length === 1 ? "it" : "them"} by default. ` +
-      `To allow ${blocked.length === 1 ? "it" : "them"}, set ` +
-      `plugins.entries.ga4.config.privacy.allowUserIdentifyingDimensions to true. ` +
+      `To allow ${blocked.length === 1 ? "it" : "them"}, set the environment variable ` +
+      `GA4_ALLOW_USER_DIMENSIONS to true. ` +
       `For counts of people, use the totalUsers or activeUsers metric instead; ` +
       `it answers "how many" without naming anyone.`,
   );
@@ -160,8 +160,8 @@ export function assertPropertyAllowed(propertyId: string, policy: AccessPolicy):
   if (!policy.propertyAllowlist.includes(propertyId)) {
     throw new PolicyError(
       `Property ${propertyId} is not in this plugin's allowlist ` +
-        `(${policy.propertyAllowlist.join(", ")}). Add it to ` +
-        `plugins.entries.ga4.config.privacy.propertyAllowlist to query it.`,
+        `(${policy.propertyAllowlist.join(", ")}). Add it to the comma-separated ` +
+        `GA4_PROPERTY_ALLOWLIST environment variable to query it.`,
     );
   }
 }

@@ -40,7 +40,7 @@ describe("resolveProperty", () => {
     })();
     expect(error?.message).toMatch(/No GA4 property specified/);
     expect(error?.fix).toMatch(/ga4_diagnose/);
-    expect(error?.fix).toMatch(/plugins\.entries\.ga4\.config\.propertyId/);
+    expect(error?.fix).toMatch(/GA4_PROPERTY_ID/);
   });
 });
 
@@ -67,14 +67,14 @@ describe("credential loading", () => {
     await expect(runtime.client()).rejects.toThrow(/GOOGLE_APPLICATION_CREDENTIALS/);
   });
 
-  it("points at SETUP.md and ga4_diagnose rather than a bare failure", async () => {
+  it("points at GA4_CREDENTIALS and doctor rather than a bare failure", async () => {
     const runtime = createRuntime({ config: configFromEnv({}), env: {} });
     const error = await runtime.client().then(
       () => undefined,
       (caught: { fix: string }) => caught,
     );
-    expect(error?.fix).toMatch(/SETUP\.md/);
-    expect(error?.fix).toMatch(/ga4_diagnose/);
+    expect(error?.fix).toMatch(/GA4_CREDENTIALS/);
+    expect(error?.fix).toMatch(/doctor/);
   });
 
   it("retries discovery rather than caching a rejection for the process lifetime", async () => {

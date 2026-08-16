@@ -1,6 +1,40 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Ga4Error, diagnose } from "./errors.js";
 import { Ga4HttpError } from "./http.js";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+/**
+ * Every `.ts` file under `dir`, recursed into subdirectories. Mirrors the
+ * helper in src/docs.test.ts and src/privacy/surface.test.ts: a directory
+ * walk via readdirSync, never fs.globSync.
+ */
+function listTsFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...listTsFiles(full));
+    } else if (entry.name.endsWith(".ts")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Shipped source only, never test files: a test file is allowed to talk
+ * about a retired identifier in a comment describing the history (this file
+ * does exactly that, a few lines up), and reading .test.ts files here would
+ * make this scan trip over its own source, which literally contains the two
+ * strings below as string literals.
+ */
+function shippedSources(): string[] {
+  return listTsFiles(path.join(repoRoot, "src")).filter((file) => !file.endsWith(".test.ts"));
+}
 
 const NOW = Date.parse("2026-08-14T10:00:00Z");
 const now = () => NOW;
@@ -191,5 +225,30 @@ describe("presentation", () => {
     const error = diagnose(googleError(400, {}), { now });
     expect(error.fix.length).toBeGreaterThan(0);
     expect(error.toString()).toBe(`${error.message}\n\n${error.fix}`);
+  });
+});
+
+describe("one code per state", () => {
+  it("has exactly one code for missing credentials", () => {
+    const sources = ["src/runtime.ts", "src/ga4/errors.ts", "src/auth/credentials.ts"]
+      .map((f) => readFileSync(f, "utf8")).join("\n");
+    expect(sources).not.toContain("NO_CREDENTIALS");
+    expect(sources).toContain("CREDENTIALS_MISSING");
+  });
+
+  it("never raises NO_CREDENTIALS anywhere in the shipped source", () => {
+    const offenders = shippedSources().filter((file) => readFileSync(file, "utf8").includes("NO_CREDENTIALS"));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("no references to the retired plugin config path", () => {
+  // plugins.entries.ga4.config named a plugin configuration block that no
+  // longer exists once this project is a skill rather than an OpenClaw
+  // plugin. A hint that still names it tells a stuck user to edit something
+  // that is not there.
+  it("mentions plugins.entries nowhere in the shipped source", () => {
+    const offenders = shippedSources().filter((file) => readFileSync(file, "utf8").includes("plugins.entries"));
+    expect(offenders).toEqual([]);
   });
 });

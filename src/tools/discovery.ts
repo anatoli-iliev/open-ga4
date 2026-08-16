@@ -297,7 +297,7 @@ export async function runDiagnose(
       : "redaction is turned OFF, so personal data in URLs will reach the model",
     fix: redaction.enabled
       ? undefined
-      : "Remove plugins.entries.ga4.config.privacy.redact, or set it to true.",
+      : "Unset the GA4_REDACT environment variable, or set it to a truthy value (1, true, yes, or on).",
   });
 
   if (properties.length > 0) {

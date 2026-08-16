@@ -58,11 +58,10 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
         .map((probe) => `  - ${probe.label}: ${probe.status}${probe.detail ? ` (${probe.detail})` : ""}`)
         .join("\n");
       throw new Ga4Error(
-        "NO_CREDENTIALS",
+        "CREDENTIALS_MISSING",
         `No Google credentials found. Locations checked:\n${checked}`,
-        "Create a service-account key in Google Cloud, grant its email Viewer access on your GA4 " +
-          "property, and set GA4_CREDENTIALS to the key's contents or a path to it (GOOGLE_APPLICATION_CREDENTIALS " +
-          "also works, as a path). SETUP.md walks through it. Run ga4_diagnose for a per-step check.",
+        "Save your service-account key as GA4_CREDENTIALS: paste the file's contents, or give " +
+          "its path. Run `doctor` for a step-by-step check of what is still missing.",
       );
     }
 
@@ -107,7 +106,7 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
         throw new Ga4Error(
           "NO_PROPERTY",
           "No GA4 property specified, and no default is configured.",
-          "Pass property_id, or set plugins.entries.ga4.config.propertyId. " +
+          "Pass property_id, or set the GA4_PROPERTY_ID environment variable. " +
             "Run ga4_diagnose to list the properties this credential can read.",
         );
       }
