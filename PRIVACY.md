@@ -29,7 +29,7 @@ touches the network.
 | --- | --- | --- |
 | `oauth2.googleapis.com` | Exchange a credential for a one-hour access token | Service account: an RS256-signed JWT assertion carrying the service-account email, the single scope, the audience, and issue/expiry times. gcloud user credential: `client_id`, `client_secret`, `refresh_token`. |
 | `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata`, `checkCompatibility` | Bearer token, numeric property id, dimension and metric names, date ranges, any filters and sort you asked for, a row limit. |
-| `analyticsadmin.googleapis.com` | `accountSummaries`, the property list `ga4_diagnose` prints | Bearer token, a page size, and, when the account list runs past one page, the continuation token Google itself returned. Nothing else. |
+| `analyticsadmin.googleapis.com` | `accountSummaries`, the property list `properties` and `doctor` print | Bearer token, a page size, and, when the account list runs past one page, the continuation token Google itself returned. Nothing else. |
 
 Never sent, to any host: your conversation, your prompts, the model's output, your
 hostname, username, file paths, an install id, a version ping, or anything
@@ -83,15 +83,14 @@ rather than leaning on this test.
 Every dimension value in every report passes through `redactValue`
 (`src/privacy/redact.ts`) as the report is rendered in `src/ga4/format.ts`. That is
 the last point at which a stray email in a URL can be stopped, so it runs on every
-row returned by `ga4_report`, `ga4_compare`, `ga4_realtime` and `ga4_query`, unless
-you turn it off.
+row returned by `report`, `compare`, `live` and `query`, unless you turn it off.
 
-The other two tools do not render reports and do not go through `format.ts`, so
-their output is not redacted. `ga4_fields` returns GA4 field names and Google's own
-descriptions of them; `ga4_diagnose` returns the property ids, property names and
-account names the credential can reach, plus one active-user count. Both escape `|`
-and collapse newlines in their table cells, as report rows do, but nothing in either
-is matched against the patterns below.
+The other three commands do not render reports and do not go through `format.ts`,
+so their output is not redacted. `fields` returns GA4 field names and Google's own
+descriptions of them; `properties` and `doctor` return the property ids, property
+names and account names the credential can reach, plus one active-user count. All
+three escape `|` and collapse newlines in their table cells, as report rows do, but
+nothing in any of them is matched against the patterns below.
 
 | Masked | Recognised as | Replaced with |
 | --- | --- | --- |
@@ -102,11 +101,16 @@ is matched against the patterns below.
 | Phone numbers | E.164 (`+14155552671`) and `(415) 555-2671` | `[redacted:phone]` |
 | Long opaque tokens | 32+ characters of `[A-Za-z0-9_-]` with at least one digit and one letter | `[redacted:token]` |
 | Card numbers | 13–19 digit runs that pass a Luhn check | `[redacted:card]` |
-| Your own patterns | `privacy.extraRedactionPatterns` in config | `[redacted:custom]` |
 
 This is a list of patterns, not an understanding of your data. A format it does not
 know (an internal reference id, a name in a page title, a national identifier)
 passes through untouched. Section 7 says more about what that costs you.
+
+The pattern list is fixed. `redactValue` still takes an `extraPatterns` argument
+(masked as `[redacted:custom]`) and a `keepQueryParams` list, but nothing supplies
+anything other than the defaults below: the plugin config block that used to carry
+them died with the plugin, and there is no environment variable in its place. Adding
+your own patterns today means editing `src/config.ts`.
 
 Query strings are handled as raw text rather than round-tripped through `new URL()`,
 which re-encodes relative paths into something you no longer recognise. Identifiers
@@ -119,8 +123,8 @@ Deliberately **not** masked:
 - **The default kept query parameters**: `utm_source`, `utm_medium`, `utm_campaign`,
   `utm_term`, `utm_content`, `utm_id`, `page`, `q`, `query`, `search`, `sort`,
   `category`, `lang`, `locale`, `ref`, `source`: what marketing reports are *about*.
-  Override with `privacy.keepQueryParams`. Patterns still apply inside a kept
-  parameter: `?q=ada@example.com` becomes `?q=[redacted:email]`.
+  Patterns still apply inside a kept parameter: `?q=ada@example.com` becomes
+  `?q=[redacted:email]`.
 - **Long digit runs that fail Luhn.** The Luhn check exists so
   `/product/1234567890123456` survives while `/receipt/4242424242424242` does not.
   Without it, ordinary SKUs and order numbers get mangled, reports become useless,
@@ -150,11 +154,16 @@ the custom definitions it finds there. That set is filtered to the same `customU
 prefix, so today it confirms the prefix rule rather than extending it; the outcome
 above comes from the prefix, not from the metadata call.
 
-The refusal names the exact key that lifts it,
-`plugins.entries.ga4.config.privacy.allowUserIdentifyingDimensions`, and suggests
-`totalUsers` or `activeUsers`, which answer "how many people" without naming anyone;
-a test asserts the message contains both. An optional `privacy.propertyAllowlist`
-refuses any property id you did not list.
+The refusal names the exact setting that lifts it, the `GA4_ALLOW_USER_DIMENSIONS`
+environment variable, and suggests `totalUsers` or `activeUsers`, which answer "how
+many people" without naming anyone; a test asserts the message contains both. The
+optional `GA4_PROPERTY_ALLOWLIST` refuses any property id you did not list.
+
+Both are environment variables and neither has a command-line flag, deliberately.
+So do `GA4_REDACT` and `GA4_AUDIT_LOG`. These four are the settings that weaken a
+default, a flag can be set by the model, and the values the model reads are authored
+by site visitors; an environment variable is set by a person. `src/cli/args.ts`
+rejects every plausible flag spelling of all four with an error saying so.
 
 **Why URL-bearing dimensions are not gated.** The obvious alternative is to prompt for
 approval whenever a query touches `pagePath`, `pageLocation`, `searchTerm` and
@@ -168,12 +177,14 @@ are redacted rather than blocked"*.
 
 Those same values are visitor-authored (anyone can put a string in your `pagePath` by
 visiting a URL), so report rows are rendered inside a fenced block introduced as
-untrusted data rather than interpolated into prose. Every tool also marks its result
-as network-sourced content, but that marker is inert on older hosts: the string
-`resultContentSource` does not occur anywhere in openclaw 2026.7.1-2, which is what
-this plugin is built against. It is emitted unconditionally so it takes effect on
-hosts that do read it. Until then the fenced, labelled block is the whole of it.
-A mitigation, not a solution.
+untrusted data rather than interpolated into prose. That fenced, labelled block is
+the whole of it. An earlier version of this project was an OpenClaw plugin and also
+marked every result with `resultContentSource: "network"`, the host's marker for
+externally controlled content; that field is only reachable through the plugin
+registration API and went away with the plugin. It was inert in any case: the string
+does not occur anywhere in openclaw 2026.7.1-2, the newest released host. What is
+lost is a label that would have taken effect on a future host upgrade. A mitigation,
+not a solution.
 
 ## 6. What is stored
 
@@ -183,8 +194,13 @@ Nothing.
 - **No token file.** Access tokens live in a variable in `src/auth/token.ts` for their
   one-hour lifetime and die with the process. A cached access token on disk is a
   credential at rest the user never agreed to.
-- **No credential copy.** Credential files are read from the path you configured.
-  Nothing is copied, rewritten, or normalised onto disk.
+- **No credential copy.** A credential file is read from wherever you pointed the skill,
+  and a pasted key is read out of the environment. Neither is copied, rewritten, or
+  normalised back onto disk by this skill. Note the one place a key does come to rest
+  that is not of this skill's making: if you paste the key's *contents* into
+  `GA4_CREDENTIALS` through OpenClaw, OpenClaw stores it in `~/.openclaw/openclaw.json`
+  and writes a `.bak` beside that file on every change. Setting `GA4_CREDENTIALS` to a
+  path instead keeps the key in the one file you chose.
 - **No telemetry.** No analytics, no crash reporting, no phone-home, no update check.
   The allowlist makes this structural: there is no host it could reach.
 - **In memory only, per process**: one access token, and a `Map` of GA4 field metadata
@@ -194,15 +210,17 @@ Nothing.
 `src/privacy/surface.test.ts` asserts no shipped file outside the audit-log module
 contains `writeFile`, `appendFile`, `createWriteStream` or `mkdir`.
 
-**The audit log is the one exception, and it is off by default.** Set
-`plugins.entries.ga4.config.privacy.auditLogPath` and the skill appends one JSON line
-per report the agent runs (`ga4_report`, `ga4_compare`, `ga4_realtime` and `ga4_query`),
-recording the time, the property id, the tool name, the dimensions and metrics asked
-for, the date range, and how many rows came back. It records no response bodies, no row
-values and no totals: a count of rows, never the rows. `ga4_fields` and `ga4_diagnose`
-are not logged. The log covers the reports the agent asked for, not setup and
-discovery, and `ga4_diagnose` does run one live `activeUsers` query as its Data API
-check, so if you need a record of every Data API call this file is not it.
+**The audit log is the one exception, and it is off by default.** Set the
+`GA4_AUDIT_LOG` environment variable to a path and the skill appends one JSON line per
+report the agent runs (`report`, `compare`, `live` and `query`), recording the time,
+the property id, the operation, the dimensions and metrics asked for, the date range,
+and how many rows came back. It records no response bodies, no row values and no
+totals: a count of rows, never the rows. The operation appears in the log's `tool`
+field under the internal names `ga4_report`, `ga4_compare`, `ga4_realtime` and
+`ga4_query`, which are what the four commands are called inside the code. `fields`,
+`properties` and `doctor` are not logged. The log covers the reports the agent asked
+for, not setup and discovery, and `doctor` does run one live `activeUsers` query as its
+Data API check, so if you need a record of every Data API call this file is not it.
 
 It exists so you can answer "what did the agent look at last Tuesday" without keeping
 the data itself. If the file cannot be written the skill warns and continues, because
@@ -223,9 +241,9 @@ cover the following, and no amount of code in this repository could.
   pattern can fix it, because every individual field is innocuous.
 - **Redaction is pattern-based and will miss things.** It does not catch a name in a
   page title, a 20-character internal reference with no digits, a birthdate, or a
-  format invented at your company last month. `privacy.extraRedactionPatterns` exists
-  for exactly that, and using it is your job; the skill does not know what your
-  identifiers look like.
+  format invented at your company last month. The skill does not know what your
+  identifiers look like, and there is currently no setting that teaches it: the
+  pattern list is what ships.
 - **Google's thresholding is Google's.** When Google withholds rows covering very few
   users, the skill surfaces that as a caveat and tells you to read the totals as lower
   bounds. It cannot say which rows were withheld or how many, because Google does not,
@@ -237,9 +255,11 @@ cover the following, and no amount of code in this repository could.
   appear in tomorrow's `pagePath` report by visiting a URL on your site. Framing rows
   as untrusted data helps. It is not a complete defence against prompt injection, and
   nothing is.
-- **Local configuration is as trusted as your machine.** Anyone who can edit your
-  OpenClaw config can set `privacy.redact` to `false` or enable
-  `allowUserIdentifyingDimensions`. These are safe defaults, not access controls.
+- **Local configuration is as trusted as your machine.** Anyone who can set
+  environment variables for the process can set `GA4_REDACT` to `false` or
+  `GA4_ALLOW_USER_DIMENSIONS` to `true`. These are safe defaults, not access controls.
+  Keeping them out of the command line stops a model, and therefore a page title, from
+  reaching them; it does nothing about a person at the keyboard.
 - **This is not legal advice or a compliance product.** No claim is made about your
   obligations under any privacy regime.
 
@@ -251,11 +271,12 @@ From a clone of the repo, about five minutes:
 # The egress allowlist, in full, in the file that enforces it.
 grep -n -A6 'ALLOWED_HOSTS' src/ga4/http.ts
 
-# Every https host in the built bundle. Expect five lines: the three above,
+# Every https host in the built bundle. Expect six lines: the three above,
 # www.googleapis.com (only ever inside the OAuth scope identifier), and
 # console.cloud.google.com, which src/ga4/errors.ts prints as the "enable this
-# API" link and never fetches; it is not on the allowlist, so a request to it
-# would be refused.
+# API" link and never fetches, and analytics.google.com, which src/setup/state.ts
+# prints as the Property access management link. Neither is on the allowlist, so
+# a request to either would be refused.
 npm run build && grep -rhoE 'https://[a-z0-9.-]+' dist | sort -u
 
 # Every OAuth scope in the source. Expect three lines: the constant in
@@ -281,11 +302,18 @@ wc -l src/auth/jwt.ts src/auth/credentials.ts src/auth/token.ts
 
 # The complete runtime dependency tree.
 npm ls --omit=dev --all
+
+# Every import in the shipped source. Expect nothing but relative paths and
+# node: builtins.
+grep -rhoE "from \"[^\"]+\"" src --include="*.ts" | sort -u
 ```
 
-The last command prints one dependency, `typebox`, with nothing under it. That is the
-point of the dependency policy: auditing this skill's network and data behaviour is a
-morning's reading, not a supply-chain investigation.
+The last two commands are the dependency policy. `npm ls --omit=dev --all` prints the
+project and nothing beneath it, because there are **zero runtime dependencies**: no
+`dependencies`, no `peerDependencies`, and every import is either relative or
+`node:`-prefixed. A test asserts both halves, so this cannot quietly stop being true.
+That is the point: auditing this skill's network and data behaviour is a morning's
+reading, not a supply-chain investigation.
 
 ---
 

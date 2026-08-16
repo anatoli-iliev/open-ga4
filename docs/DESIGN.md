@@ -1,6 +1,15 @@
 # Design: `open-ga4`
 
-Status: accepted · 2026-08-14
+Status: accepted 2026-08-14, packaging half superseded 2026-08-16
+
+**Read this alongside
+[the skill design](superpowers/specs/2026-08-16-open-ga4-design.md).** That document
+supersedes the packaging decisions here: D1 below is reversed (this ships as an OpenClaw
+skill, not a plugin), D2's dependency count is now zero rather than one, D3's credential
+list gained a source, and the six tools of D4 are seven commands on a command line. The
+analytics decisions, D4's shape through D8, are unchanged and are why this file is still
+here. Each superseded decision says so in place rather than being deleted, because the
+reasoning that was rejected is the part worth keeping.
 
 ## Problem
 
@@ -32,7 +41,14 @@ slice of the problem and impose real setup cost:
 
 ## Decisions
 
-### D1. Package shape: `definePluginEntry`
+### D1. Package shape: `definePluginEntry` (reversed)
+
+**Superseded.** This project no longer registers with OpenClaw's plugin API at all. It
+ships as a skill: `SKILL.md` plus committed JavaScript, invoked as
+`node <skill-dir>/lib/cli.js <command>`. The cost of that reversal, recorded in the newer
+document, is that `resultContentSource` is only reachable through the plugin registration
+API and therefore goes away; it was inert on every released host in any case. The original
+reasoning follows.
 
 `defineToolPlugin` is the obvious choice for a tools-only plugin and was the
 first pick. It is wrong here. Reading the real SDK source rather than the docs
@@ -54,8 +70,14 @@ plugin uninstallable on every host that actually exists today.
 
 ### D2. Zero network dependencies
 
-Runtime dependencies: **`typebox` only**, which OpenClaw itself depends on and
-which has no dependencies of its own. Everything else is Node built-ins.
+Runtime dependencies: **none at all**. `package.json` has no `dependencies` and no
+`peerDependencies`, and every import in `src/` is either relative or `node:`-prefixed.
+
+This originally read "`typebox` only", which OpenClaw itself depended on. Typebox was
+imported in three files and only ever to build tool parameter schemas and the plugin
+config schema, both of which existed to satisfy the plugin API and both of which died
+with D1. Dropping to zero is not a vanity metric: it is what makes "install and it runs"
+true, because there is no `node_modules` to be missing and no install step that can fail.
 
 Rejected: `@google-analytics/data` (gRPC stack and generated protos),
 `googleapis` (very large), `google-auth-library` (pulls `gaxios`, `gcp-metadata`,
@@ -70,12 +92,16 @@ claim below verifiable by reading one file.
 
 Resolution order, first match wins:
 
-1. `plugins.entries.ga4.config.credentials`: a path to a service-account JSON
-   key, or an OpenClaw `SecretRef`.
-2. `GOOGLE_APPLICATION_CREDENTIALS`: the Google-standard environment variable.
+1. `GA4_CREDENTIALS` holding the service-account JSON key's contents, pasted
+   straight in.
+2. `GA4_CREDENTIALS` holding a path to that key file instead. The two are told
+   apart by whether the trimmed value starts with `{`. This replaced the
+   original source 1, a path in the plugin's own config block, which went away
+   with D1.
+3. `GOOGLE_APPLICATION_CREDENTIALS`: the Google-standard environment variable.
    Chosen because existing GA4 skills already set it, so users migrating keep
    their setup.
-3. Application Default Credentials at the well-known gcloud path
+4. Application Default Credentials at the well-known gcloud path
    (`~/.config/gcloud/application_default_credentials.json`), which is an
    authorized-user refresh-token grant rather than a service account.
 
@@ -86,38 +112,44 @@ the integration would silently break weekly.
 
 Only ever requests `https://www.googleapis.com/auth/analytics.readonly`.
 
-### D4. Tool surface: intent-shaped, with one escape hatch
+### D4. Operation surface: intent-shaped, with one escape hatch
 
-Six tools. Wide enough to cover what people ask, narrow enough that the model
-picks correctly:
+Wide enough to cover what people ask, narrow enough that the model picks correctly.
+These were six tools; they are now seven commands, with the same bodies behind them:
 
-| Tool | Purpose |
+| Command | Purpose |
 | --- | --- |
-| `ga4_diagnose` | Check every setup requirement, print the exact fix for the first failure, and list the properties the credential can read. |
-| `ga4_fields` | Search the property's live dimension and metric catalog by keyword. |
-| `ga4_report` | The workhorse: one enum picks a ready-made report. |
-| `ga4_compare` | The same reports across two consecutive periods. |
-| `ga4_realtime` | Active users in roughly the last 30 minutes. |
-| `ga4_query` | The escape hatch: explicit dimensions, metrics, filters and sort. |
+| `doctor` | Check every setup requirement and print the exact fix for the first failure. With `--json`, the single next thing the user must do. |
+| `fields` | Search the property's live dimension and metric catalog by keyword. |
+| `report` | The workhorse: one preset id picks a ready-made report. |
+| `compare` | The same reports across two consecutive periods. |
+| `live` | Active users in roughly the last 30 minutes. |
+| `query` | The escape hatch: explicit dimensions, metrics, filter and sort. |
+| `properties` | Every property the credential can read, with its numeric id. |
 
-`ga4_report` takes a single `report` enum that expands to a verified
-dimension/metric combination, so naming an intent is enough and there is
-nothing to guess. Anything the presets do not cover goes to `ga4_query`.
+`report` takes a single preset id that expands to a verified dimension/metric
+combination, so naming an intent is enough and there is nothing to guess.
+Anything the presets do not cover goes to `query`.
 
-Splitting those two rather than putting a `preset` parameter alongside optional
-`dimensions` and `metrics` on one tool keeps the common tool's schema to one
-enum, which is the whole point: a model that only has to pick an enum value
+Splitting those two rather than putting a preset argument alongside optional
+`--dimensions` and `--metrics` on one command keeps the common case to one
+value, which is the whole point: a model that only has to pick a preset id
 cannot pick an incompatible dimension/metric pair.
 
-A separate `ga4_properties` was in the first draft and was folded into
-`ga4_diagnose`. Property discovery is nearly always something you do because
-setup is not working yet, and every tool schema is spent from the context
-window of every conversation whether it is used or not.
+`properties` was in the first draft, was folded into `ga4_diagnose`, and is
+separate again. The original reason for folding it in was that every tool
+schema is spent from the context window of every conversation whether it is
+used or not; a command line costs nothing until it is run, and setup needs
+property discovery on its own, before any report is possible.
 
 Results render as markdown tables, not raw JSON: fewer tokens, and the model
 reads them more reliably.
 
 ### D5. Privacy controls, enforced in code
+
+Every one of these that can be turned off is turned off through an environment
+variable and has no command-line flag, because a flag can be set by the model
+and dimension values are written by site visitors.
 
 | Control | Default | Enforcement |
 | --- | --- | --- |
@@ -133,7 +165,7 @@ reads them more reliably.
 
 The honest limitation, stated in `PRIVACY.md` rather than buried: report data
 returned to the agent is seen by whatever model provider the user has
-configured. The plugin controls what leaves Google, not what the user's own LLM
+configured. The skill controls what leaves Google, not what the user's own LLM
 does with it.
 
 ### D6. Analytics data is attacker-controlled input
@@ -145,16 +177,19 @@ requested. Anyone on the internet can visit
 tomorrow's report, and from there in an agent's context as though it were data
 the owner wrote.
 
-Two consequences:
+The consequence: report rows are rendered into a fenced, clearly labelled data
+block rather than interpolated into prose, so injected text does not read as
+instruction, and `SKILL.md` tells the agent the same thing in words.
 
-1. Every tool registers with `resultContentSource: "network"`, which is
-   OpenClaw's marker for externally controlled content. This is the concrete
-   reason D1 could not use `defineToolPlugin`.
-2. Report rows are rendered into a fenced, clearly labelled data block rather
-   than interpolated into prose, so injected text does not read as instruction.
+There was a second consequence, and D1's reversal removed it: every tool
+registered with `resultContentSource: "network"`, OpenClaw's marker for
+externally controlled content, which was the concrete reason D1 could not use
+`defineToolPlugin`. It is unreachable outside the plugin API and was read by no
+released host, so what is lost is a label that would have taken effect on a
+future upgrade.
 
-Neither is a complete defence against prompt injection (nothing is), but
-declaring the provenance is strictly better than the current practice of
+This is not a complete defence against prompt injection (nothing is), but
+labelling the provenance is strictly better than the common practice of
 returning `JSON.stringify(response)` and hoping.
 
 ### D7. No hardcoded field catalog as the source of truth
@@ -165,7 +200,7 @@ hand-maintained field lists that disagreed with each other, which is the whole
 argument against shipping one as truth.
 
 The live `properties/{id}/metadata` response is authoritative and is what
-`ga4_fields` searches. A generated snapshot ships for offline preset validation
+`fields` searches. A generated snapshot ships for offline preset validation
 and fast startup, and a CI script re-fetches metadata to fail the build if any
 shipped name has disappeared. Diagnostics for a bad field name come from that
 metadata and from `checkCompatibility`, never from string-matching Google's
@@ -179,29 +214,31 @@ measurement ID (`G-XXXXXXX`) used where a numeric property ID is required,
 invalid dimension or metric name (with the closest valid names suggested),
 incompatible dimension/metric pairing, and quota exhaustion.
 
-`ga4_diagnose` runs the same checks proactively so a user can fix setup without
+`doctor` runs the same checks proactively so a user can fix setup without
 first triggering a failure.
 
 ## Architecture
 
 ```
-index.ts                 defineToolPlugin entry; wires config → tools
-src/config.ts            typebox config schema + resolution
+src/cli/                 argv parsing, dispatch, exit codes, output streams
+src/config.ts            settings resolved from the environment
+src/setup/               doctor --json's one-blocking-step state machine
 src/auth/                credential discovery, RS256 JWT, token cache
 src/ga4/                 egress-guarded fetch, Data API, Admin API,
                          error taxonomy, dimension/metric catalog,
                          date parsing, markdown formatting
 src/privacy/             redaction, dimension policy, property allowlist,
                          optional audit log
-src/tools/               one file per tool
+src/tools/               one file per operation, called by the CLI
 ```
 
 Each module is independently testable: auth does not import the HTTP client,
-redaction does not import the API layer, tools compose the rest.
+redaction does not import the API layer, the CLI composes the rest.
 
 ## Verification
 
-- `npm test`: unit tests per module, with recorded GA4 responses as fixtures.
-- `npm run plugin:validate`: OpenClaw's own manifest and entry validation.
+- `npm run check`: typecheck, then tests, then build.
+- `npm test`: unit tests per module, with recorded GA4 responses as fixtures,
+  plus the documentation tests that pin `SKILL.md` and `README.md` to the code.
 - A live read-only smoke test against a real property, run manually, never in
   CI (CI has no credentials and must not need any).

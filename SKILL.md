@@ -113,8 +113,8 @@ exactly. Pick the closest row and run the command in the right column.
 | anything no preset covers: an odd dimension, an odd metric, an odd filter | `query --metrics activeUsers --dimensions country` |
 
 Date range: append `--range "last month"` (or any range from the
-[Date ranges](#date-ranges) table) when the user names a period. Without it, `report`
-and `query` cover the last 28 days, ending yesterday.
+[Date ranges](#date-ranges) table) when the user names a period. Without it, `report`,
+`compare` and `query` cover the last 28 days, ending yesterday.
 
 If the user names a website and a default property is not set, resolve the property
 first: see [When the question is vague](#when-the-question-is-vague).
@@ -484,9 +484,12 @@ Accepted by `--range`, quoted when they contain spaces:
 `this week`, `last week`, `this month`, `last month`, `this year`, `last year`,
 `N days`, an explicit `2026-01-01..2026-01-31`, or a single `2026-01-15`.
 
-Relative ranges end **yesterday**, never today, because today is a partial day and
-including it makes a period comparison misleading. `today` is the one range that says
-so in its own label.
+A range counted back in days (`last 7 days`, `last 28 days`, `N days`) ends
+**yesterday**, never today, because today is a partial day and including it makes a
+period comparison misleading. The three "so far" ranges (`this week`, `this month`,
+`this year`) do run up to today, and their labels say "so far"; `today` labels itself
+"today (partial day)". Report the label the command printed rather than describing the
+period yourself.
 
 Calendar ranges (`this week`, `last month`, and the rest) are worked out from this
 machine's clock, and the report prints a note saying so, because the property may
