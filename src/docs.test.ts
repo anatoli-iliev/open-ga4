@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -154,5 +154,42 @@ describe("project identity", () => {
     for (const file of ["README.md", "SETUP.md", "PRIVACY.md", "SECURITY.md", "CONTRIBUTING.md"]) {
       expect(readFileSync(file, "utf8")).not.toContain("openclaw-plugin-ga4");
     }
+  });
+});
+
+/** Every `.ts` file under `dir`, recursed into subdirectories. */
+function listTsFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...listTsFiles(full));
+    } else if (entry.name.endsWith(".ts")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+describe("runtime dependencies", () => {
+  it("ships no runtime dependencies", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as Record<string, unknown>;
+    expect(pkg.dependencies ?? {}).toEqual({});
+    expect(pkg.peerDependencies ?? {}).toEqual({});
+  });
+
+  it("imports nothing outside node: builtins", () => {
+    const files = listTsFiles(path.join(repoRoot, "src")).filter((file) => !file.endsWith(".test.ts"));
+    const offenders: string[] = [];
+    for (const file of files) {
+      for (const match of readFileSync(file, "utf8").matchAll(/from\s+["']([^"']+)["']/g)) {
+        const spec = match[1]!;
+        if (spec.startsWith(".") || spec.startsWith("node:")) {
+          continue;
+        }
+        offenders.push(`${path.relative(repoRoot, file)}: ${spec}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
