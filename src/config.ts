@@ -11,7 +11,6 @@ import { LIMITS } from "./ga4/limits.js";
  * the model. An environment variable is set by a person.
  */
 export type ResolvedConfig = {
-  credentialsPath?: string;
   defaultPropertyId?: string;
   defaultRowLimit: number;
   redaction: RedactionOptions;
@@ -50,7 +49,6 @@ export function configFromEnv(
   }
 
   return {
-    credentialsPath: undefined,
     defaultPropertyId: env.GA4_PROPERTY_ID?.trim() || undefined,
     defaultRowLimit: LIMITS.DEFAULT_ROWS,
     redaction: {

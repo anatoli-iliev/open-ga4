@@ -153,7 +153,15 @@ describe("GA4_CREDENTIALS", () => {
   });
 
   it("reports malformed inline JSON without echoing the value", async () => {
-    const result = await resolveCredentials({ env: { GA4_CREDENTIALS: '{"private_key":"secret' } });
+    // An unquoted value, not just an unterminated string: V8's JSON.parse
+    // embeds a text excerpt around the offending token for this shape of
+    // syntax error ("Unexpected token 's', ...'ate_key: secretvalue'..." or
+    // similar), unlike an unterminated string, whose message is position-only
+    // and never repeats the source text. This fixture is chosen so a test
+    // that stopped redacting would actually fail here.
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: '{"private_key": secretvalue}' },
+    });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     const probe = result.probes.find((p) => p.label.startsWith("GA4_CREDENTIALS"));
@@ -221,5 +229,23 @@ describe("GA4_CREDENTIALS", () => {
       readFileImpl: async () => SERVICE_ACCOUNT,
     });
     expect(JSON.stringify(result.probes)).not.toContain("PRIVATE KEY");
+  });
+
+  // The file route shares parseCredentialFile with the pasted route, but
+  // builds its probe through a different code path in resolveCredentials (the
+  // candidates loop, not the inline branch), so it is checked on its own
+  // rather than assumed from the pasted-key test above. A user can just as
+  // easily point GA4_CREDENTIALS at a malformed key file as paste one in.
+  it("reports a malformed GA4_CREDENTIALS file without echoing its contents", async () => {
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/keys/broken.json" },
+      home: "/home/ada",
+      readFileImpl: async () => '{"private_key": secretvalue}',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const probe = result.probes.find((p) => p.label === "GA4_CREDENTIALS (file)");
+    expect(probe?.status).toBe("invalid");
+    expect(JSON.stringify(result.probes)).not.toContain("secret");
   });
 });

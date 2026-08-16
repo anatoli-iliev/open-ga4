@@ -55,9 +55,10 @@ describe("credential loading", () => {
   });
 
   it("reports every location it checked when nothing is found", async () => {
-    // configFromEnv never sets credentialsPath (see config.ts); a configured
-    // credential location is exercised here through env.GOOGLE_APPLICATION_CREDENTIALS
-    // instead, which is the only credential-location input createRuntime still accepts.
+    // ResolvedConfig carries no credential-location field at all; every
+    // credential source (GA4_CREDENTIALS, GOOGLE_APPLICATION_CREDENTIALS,
+    // gcloud ADC) reaches resolveCredentials through env, which createRuntime
+    // just forwards. Exercised here through GOOGLE_APPLICATION_CREDENTIALS.
     const runtime = createRuntime({
       config: configFromEnv({}),
       env: { GOOGLE_APPLICATION_CREDENTIALS: "/nope/a.json" },
