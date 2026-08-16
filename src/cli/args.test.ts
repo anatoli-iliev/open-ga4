@@ -58,4 +58,20 @@ describe("parseArgs", () => {
     expect(parseArgs(["fields", "--", "--weird-field-name"]))
       .toMatchObject({ positional: ["--weird-field-name"] });
   });
+
+  it("normalizes the preset id for report and compare only", () => {
+    expect(parseArgs(["report", "top-pages"])).toMatchObject({ positional: ["top_pages"] });
+    expect(parseArgs(["compare", "top-pages"])).toMatchObject({ positional: ["top_pages"] });
+  });
+
+  it("passes positionals through verbatim for every other command", () => {
+    // fields' positional is a free-text search term matched literally against
+    // field names and descriptions (runFields / FieldsParams.query); silently
+    // rewriting "page-view" to "page_view" would search for the wrong thing
+    // and never tell the user.
+    expect(parseArgs(["fields", "page-view"])).toMatchObject({ positional: ["page-view"] });
+    // A hyphenated, date-like positional must also survive unchanged on a
+    // command that isn't report or compare.
+    expect(parseArgs(["query", "2024-01-01"])).toMatchObject({ positional: ["2024-01-01"] });
+  });
 });

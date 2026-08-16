@@ -26,7 +26,6 @@ describe("exitCodeFor", () => {
       "CLOCK_SKEW",
       "DATA_API_DISABLED",
       "ADMIN_API_DISABLED",
-      "SERVICE_DISABLED",
       "NO_PROPERTY_ACCESS",
       "NO_PROPERTY",
       "PROPERTY_NOT_FOUND",

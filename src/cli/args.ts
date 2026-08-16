@@ -14,13 +14,31 @@ export const COMMANDS = ["doctor", "report", "compare", "live", "query", "fields
  * model, and dimension values are authored by site visitors, so a page title is
  * a channel for talking an agent into passing one. They are environment
  * variables so that a person sets them.
+ *
+ * Each setting is listed under both spellings a model could plausibly reach
+ * for: the environment variable name lowercased (GA4_REDACT -> redact,
+ * GA4_ALLOW_USER_DIMENSIONS -> allow-user-dimensions, GA4_PROPERTY_ALLOWLIST
+ * -> property-allowlist, GA4_AUDIT_LOG -> audit-log) and the internal config
+ * field name it fills (redaction -> redaction, auditLogPath ->
+ * audit-log-path). property-allow-list covers the common alternative
+ * hyphenation of "allowlist". Extra names here only ever improve the error
+ * message, so err toward including one too many.
  */
 export const FORBIDDEN_FLAGS = [
-  "redact", "no-redact",
+  "redact", "no-redact", "redaction", "no-redaction",
   "allow-user-dimensions", "allow-user-identifying-dimensions",
-  "property-allowlist",
-  "audit-log",
+  "property-allowlist", "property-allow-list",
+  "audit-log", "audit-log-path",
 ] as const;
+
+/**
+ * Only report and compare take a preset id as their positional (ReportParams
+ * and CompareParams in src/tools/reports.ts). Every other command's
+ * positional is free text passed straight to Google or matched literally
+ * (FieldsParams.query in src/tools/discovery.ts, for one), so rewriting its
+ * hyphens would silently change what the user asked for.
+ */
+const NORMALIZE_ID_COMMANDS = new Set(["report", "compare"]);
 
 const KNOWN_FLAGS: Record<string, readonly string[]> = {
   doctor: ["json"],
@@ -60,7 +78,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (token === "--") { literal = true; continue; }
     if (token === "--help" || token === "-h") return { kind: "help", command };
 
-    if (!token.startsWith("--")) { positional.push(normalizeId(token)); continue; }
+    if (!token.startsWith("--")) {
+      positional.push(NORMALIZE_ID_COMMANDS.has(command) ? normalizeId(token) : token);
+      continue;
+    }
 
     const body = token.slice(2);
     const eq = body.indexOf("=");
