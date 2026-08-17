@@ -43,10 +43,11 @@ openclaw skills install /path/to/open-ga4            # from a local clone
 Nothing has been released yet, so the ClawHub line becomes true at the first tagged
 release; the git and local-clone routes work today.
 
-No install route runs a build, so the plan is to commit the compiled JavaScript beside the
-source and have CI reject any drift between the two. That is the next change to land;
-until it does, the folder an install produces is not yet runnable. Node 22.22.3 or newer
-will be the only requirement, and OpenClaw already needs it.
+No install route runs a build, so the compiled JavaScript is committed in `lib/` beside the
+source, one readable file per source module. Committing build output is normally bad
+practice, and the price of it is a CI job that rebuilds from `src/` on every push and
+fails if the committed output differs by a byte, so the two cannot drift. Node 22.22.3 or
+newer is the only requirement, and OpenClaw already needs it.
 
 Then set one environment variable, and usually a second:
 
@@ -208,7 +209,7 @@ npm run typecheck
 ```
 
 `npm test` builds first, because `src/privacy/surface.test.ts` asserts the privacy
-guarantees against `dist/` (the bundle that actually ships) rather than against the
+guarantees against `lib/` (the bundle that actually ships) rather than against the
 source. `src/docs.test.ts` and `src/docs/skill.test.ts` check the prose in this file,
 `SKILL.md` and the rest: every command quoted in either file must parse, every `blocked_on`
 value the code can emit must appear in `SKILL.md`'s setup tree, every environment variable

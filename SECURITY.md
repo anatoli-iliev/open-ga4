@@ -205,7 +205,7 @@ Nothing else, ever. Adding a host is a visible, reviewable diff in one constant.
 One test asserts the refusal happens **before** `fetch` is called at all, not after.
 The allowlist is checked once, so `guardedFetch` passes `redirect: "error"`: a 302 from
 an allowed host is a failure rather than a request to a host that was never checked.
-Separately, `src/privacy/surface.test.ts` scans every `.js` file in `dist/` for
+Separately, `src/privacy/surface.test.ts` scans every `.js` file in `lib/` for
 `https://` hosts and fails on any host that is neither contacted nor an explicitly
 listed console link shown to a human.
 
@@ -233,7 +233,7 @@ access instead of property-level, or a Cloud IAM role nobody understands.
 - **It never calls `properties.audienceExports`, `properties.audienceLists`, or the
   Admin API's `runAccessReport`**, the three surfaces built to hand back rows keyed to
   an individual visitor rather than aggregates. `src/privacy/surface.test.ts` walks
-  every `.js` file in `dist/` and asserts those strings are absent from the built
+  every `.js` file in `lib/` and asserts those strings are absent from the built
   bundle. That test is the whole claim, and it is deliberately narrower than "it cannot
   read per-user data", which would be an overclaim: `runReport` returns per-person rows
   as soon as the `userId` dimension is used, which is why that dimension is blocked by
@@ -268,23 +268,20 @@ Git tag silently changes what the release pipeline runs.
   nobody should `npm install` it. Distribution is ClawHub and `git`, which copy the
   repository's own files.
 
-- **Committed build output, to be held honest by a test.** No install route runs a
-  build, so the JavaScript that runs has to be committed alongside the TypeScript it
+- **Committed build output, held honest by a test.** No install route runs a
+  build, so the JavaScript that runs is committed in `lib/`, alongside the TypeScript it
   came from, one readable file per source module. Committing build output is normally
-  bad practice, and the price of it is a CI job that recompiles from `src/` and fails if
-  the committed output differs by a byte, so the two cannot drift and a hand-edited
-  artifact does not survive a pull request. Neither the committed output nor that job
-  exists at this commit; both land with the next change, and this bullet becomes a
-  statement of fact rather than of intent when they do.
+  bad practice, and the price of it is a CI job (`.github/workflows/ci.yml`) that
+  rebuilds from `src/` and fails if the committed output differs by a byte, so the two
+  cannot drift and a hand-edited artifact does not survive a pull request.
 
 **Provenance: intended, not yet in place.** Nothing has been released. This repository
 intentionally contains **no publish workflow**; a publish job that can fire on a push is
-a foot-gun, and a comment at the end of `ci.yml` says so, still worded for the npm route
-it was written for. When one lands it will be gated on a published GitHub release and
-run `clawhub skill publish` with the source repository, ref and commit passed
-explicitly, so the listing records which commit produced it. None of that exists today,
-so there is nothing to verify: treat anything published under this name before the first
-tagged release as not from here.
+a foot-gun, and a comment at the end of `ci.yml` records that. When one lands it will be
+gated on a published GitHub release and run `clawhub skill publish` with the source
+repository, ref and commit passed explicitly, so the listing records which commit
+produced it. None of that exists today, so there is nothing to verify: treat anything
+published under this name before the first tagged release as not from here.
 
 ## What is out of scope
 

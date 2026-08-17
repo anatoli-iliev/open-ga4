@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
  * This file is deliberately named `.test-support.ts`, not `.test.ts`:
  * `vitest.config.ts` collects only `*.test.ts`, so it is not mistaken for a
  * suite with no tests in it, and `tsconfig.json` excludes the same suffix from
- * the build, so it never reaches `dist/`.
+ * the build, so it never reaches `lib/`.
  */
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");

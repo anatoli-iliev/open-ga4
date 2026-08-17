@@ -16,7 +16,7 @@ here and the code disagree, the code is right and this document is a bug.
 | Credentials never reach output, logs or errors | `src/privacy/redact.ts`: `redactText`, called in `src/ga4/http.ts` | `src/ga4/http.test.ts`, `src/privacy/redact.test.ts` |
 | Nothing is written to disk | no writer exists outside the opt-in audit log | `src/privacy/surface.test.ts` |
 
-The tests in `src/privacy/surface.test.ts` run against `dist/` (the bundle that
+The tests in `src/privacy/surface.test.ts` run against `lib/` (the bundle that
 ships), not the source. Intentions do not survive a build; strings do.
 
 ## 2. What leaves your machine
@@ -69,7 +69,7 @@ introduce `deleteProperty`.
 **Call the audience-export or access-report endpoints.** The skill never calls
 `properties.audienceExports`, `properties.audienceLists`, or the Admin API's
 `runAccessReport`, and `src/privacy/surface.test.ts` walks every `.js` file in
-`dist/` asserting the strings `audienceExport`, `audienceList`, `runAccessReport`
+`lib/` asserting the strings `audienceExport`, `audienceList`, `runAccessReport`
 and `userDataRetention` do not appear.
 
 That test is the whole claim, and it is deliberately narrower than "cannot read
@@ -276,7 +276,7 @@ grep -n -A6 'ALLOWED_HOSTS' src/ga4/http.ts
 # API" link and never fetches, and analytics.google.com, which src/setup/state.ts
 # prints as the Property access management link. Neither is on the allowlist, so
 # a request to either would be refused.
-npm run build && grep -rhoE 'https://[a-z0-9.-]+' dist | sort -u
+npm run build && grep -rhoE 'https://[a-z0-9.-]+' lib | sort -u
 
 # Every OAuth scope in the source. Expect three lines: the constant in
 # src/auth/jwt.ts, and the two tests that pin it.
@@ -284,15 +284,15 @@ grep -rn 'googleapis.com/auth' src
 
 # The audience-export and access-report endpoints. Expect three hits, all in
 # src/privacy/surface.test.ts, the test that asserts they are nowhere else,
-# and nothing at all from dist/.
-grep -rn 'audienceExport\|audienceList\|runAccessReport' src dist
+# and nothing at all from lib/.
+grep -rn 'audienceExport\|audienceList\|runAccessReport' src lib
 
 # Anything that writes to disk. Expect three hits: two in src/privacy/audit.ts,
 # which is the audit log, and one in src/privacy/surface.test.ts, the test that
 # names these APIs in order to assert nothing else calls them.
 grep -rn 'writeFile\|appendFile\|createWriteStream' src
 
-# The structural guarantees, asserted against dist/ rather than src/. Expect
+# The structural guarantees, asserted against lib/ rather than src/. Expect
 # both to pass. No test needs a network connection or a Google credential.
 npx vitest run src/privacy/surface.test.ts && npm test
 

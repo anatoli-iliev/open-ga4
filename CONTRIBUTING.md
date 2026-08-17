@@ -38,14 +38,15 @@ way.
 ```bash
 npm run check         # typecheck, then tests, then build
 npm run typecheck     # tsc -p tsconfig.check.json
-npm run build         # tsc -p tsconfig.json, emits dist/
+npm run build         # scripts/build-lib.mjs, emits lib/
+npm run check:lib     # scripts/build-lib.mjs --check, fails if lib/ has drifted from src/
 npm test              # vitest run
 ```
 
 **`npm test` builds first.** `pretest` runs `npm run build`, because
-`src/privacy/surface.test.ts` asserts against `dist/` (the built artifact that actually
+`src/privacy/surface.test.ts` asserts against `lib/` (the built artifact that actually
 ships), not against the source. Invoking `vitest` directly bypasses that and reads whatever
-`dist/` happened to contain last, which means it can pass on code you have already deleted
+`lib/` happened to contain last, which means it can pass on code you have already deleted
 and fail on code you have already fixed. Prefer `npm test`.
 
 No test needs network access and no test needs credentials. If you find yourself wanting
@@ -95,10 +96,10 @@ README is worth nothing on its own. Each one is checked against the built bundle
 
 | Claim | Where it is enforced | Where it is asserted |
 | --- | --- | --- |
-| Contacts only `oauth2.googleapis.com`, `analyticsdata.googleapis.com`, `analyticsadmin.googleapis.com` | `ALLOWED_HOSTS` + `assertAllowedUrl` in `src/ga4/http.ts`, checked before any request is issued | `src/ga4/http.test.ts`, and a scan of `dist/` in `src/privacy/surface.test.ts` |
+| Contacts only `oauth2.googleapis.com`, `analyticsdata.googleapis.com`, `analyticsadmin.googleapis.com` | `ALLOWED_HOSTS` + `assertAllowedUrl` in `src/ga4/http.ts`, checked before any request is issued | `src/ga4/http.test.ts`, and a scan of `lib/` in `src/privacy/surface.test.ts` |
 | Requests no OAuth scope but `analytics.readonly` | the scope constant is the only one in the codebase | `src/privacy/surface.test.ts` |
-| Never calls `properties.audienceExports`, `properties.audienceLists` or the Admin API's `runAccessReport`, the three surfaces built to return rows keyed to an individual visitor | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `dist/` |
-| Writes no report data to disk | nothing outside the optional audit log opens a file for writing | `src/privacy/surface.test.ts` scans `dist/` for `writeFile`, `appendFile`, `createWriteStream`, `mkdir` |
+| Never calls `properties.audienceExports`, `properties.audienceLists` or the Admin API's `runAccessReport`, the three surfaces built to return rows keyed to an individual visitor | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `lib/` |
+| Writes no report data to disk | nothing outside the optional audit log opens a file for writing | `src/privacy/surface.test.ts` scans `lib/` for `writeFile`, `appendFile`, `createWriteStream`, `mkdir` |
 | Blocks person-identifying dimensions unless opted in | `assertDimensionsAllowed` in `src/privacy/policy.ts` | `src/privacy/policy.test.ts` |
 | Redacts identifiers out of dimension values | `redactText` in `src/privacy/redact.ts` | `src/privacy/redact.test.ts` |
 

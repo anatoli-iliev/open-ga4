@@ -26,7 +26,9 @@
     "node": ">=22.22.3"
   },
   "files": [
-    "dist",
+    "lib",
+    "SKILL.md",
+    "SETUP.md",
     "README.md",
     "PRIVACY.md",
     "SECURITY.md",
@@ -34,9 +36,9 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "node scripts/build-lib.mjs",
     "check": "npm run typecheck && npm test && npm run build",
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "check:lib": "node scripts/build-lib.mjs --check",
     "pretest": "npm run build",
     "test": "vitest run --config ./vitest.config.ts",
     "typecheck": "tsc -p tsconfig.check.json"
