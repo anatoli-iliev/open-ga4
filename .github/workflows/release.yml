@@ -102,6 +102,59 @@ jobs:
       - name: Test
         run: npm test
 
+      # The publisher is installed here, on its own, with no secret in this
+      # step's environment and with npm lifecycle scripts disabled. The step
+      # below is the only one that gets the token, and by then nothing is left
+      # to install.
+      #
+      # What this replaces. Both halves used to be one step running
+      # `npx clawhub@0.23.3 skill publish ...`, which pinned the top-level
+      # version and nothing else. All 47 packages beneath it were resolved by
+      # semver range at the moment the release ran, unpacked with lifecycle
+      # scripts enabled, inside the step whose environment held CLAWHUB_TOKEN
+      # and GH_TOKEN. Whoever compromised any package in that tree (a
+      # maintainer account takeover on a small utility, or a hijacked patch
+      # version landing inside an existing range) could read the token out of
+      # process.env, publish their own build under this skill's slug, and be
+      # running their code on every machine that installs or updates it, which
+      # is the machine holding a Google service-account private key. Pinning
+      # the top-level version does not help: the resolution that matters is one
+      # level down.
+      #
+      # So the publisher is resolved the way this repository already resolves
+      # everything else it runs. `.github/publish/package.json` names the exact
+      # version, `.github/publish/package-lock.json` is committed next to it
+      # and carries an integrity hash for every package in the tree, and
+      # `npm ci` refuses to install anything the lockfile does not account
+      # for. That is the same argument as pinning an action by commit SHA
+      # rather than by tag, applied to the one tool here that holds a
+      # credential. Dependabot watches this directory (see
+      # .github/dependabot.yml), so pinning does not mean rotting.
+      #
+      # --ignore-scripts: nothing in the tree gets to execute during install,
+      # which is the vector that would not need the publisher to be compromised
+      # at all, only something it depends on. --include=dev because clawhub is
+      # a devDependency of that manifest (it is tooling, not anything this
+      # skill ships), and a runner with NODE_ENV=production would otherwise
+      # install nothing and fail confusingly a step later.
+      #
+      # `.github/publish/` never reaches a user. .clawhubignore excludes
+      # `.github/` and `node_modules/`, so neither these two manifests nor the
+      # tree installed here is part of the published bundle.
+      - name: Install the pinned ClawHub publisher
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/.github/publish"
+          npm ci --ignore-scripts --include=dev
+          ./node_modules/.bin/clawhub --help > /dev/null
+          echo "Publisher installed from .github/publish/package-lock.json"
+
+      # The local binary from the step above, by absolute path, never `npx`.
+      # `npx clawhub@0.23.3` here would resolve and install a fresh dependency
+      # tree with the token already in scope, which is exactly what the step
+      # above exists to prevent, so the pin is worth nothing if this line ever
+      # goes back to `npx`.
+      #
       # "$GITHUB_WORKSPACE", never ".". clawhub resolves a relative folder
       # argument against its own working directory, which silently falls back
       # to the OpenClaw workspace directory when the current directory has no
@@ -137,7 +190,7 @@ jobs:
           CLAWHUB_TAGS: ${{ github.event.release.prerelease && 'prerelease' || 'latest' }}
         run: |
           set -euo pipefail
-          npx clawhub@0.23.3 skill publish "$GITHUB_WORKSPACE" \
+          "$GITHUB_WORKSPACE/.github/publish/node_modules/.bin/clawhub" skill publish "$GITHUB_WORKSPACE" \
             --slug open-ga4 --name "Open GA4" \
             --version "${GITHUB_REF_NAME#v}" --tags "$CLAWHUB_TAGS" \
             --source-repo "$GITHUB_REPOSITORY" \

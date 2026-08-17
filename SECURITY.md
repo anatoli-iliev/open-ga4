@@ -261,8 +261,24 @@ Git tag silently changes what the release pipeline runs.
   commit SHA with the version in a trailing comment. A tag can be moved; a SHA cannot.
   Dependabot proposes updates weekly (`.github/dependabot.yml`) so pinning does not
   mean rotting.
-- **Least privilege in CI.** `permissions: contents: read` at workflow level. No
-  secrets are used, because tests need no credentials and no network.
+- **Least privilege in CI.** `permissions: contents: read` at workflow level, in both
+  workflows, and a test fails if anything wider is ever granted. `.github/workflows/ci.yml`
+  uses no secret at all, because the tests need no credentials and no network. The one
+  secret this repository has, `CLAWHUB_TOKEN`, exists only in the release workflow, and
+  only in the two steps that need it: the one that checks it is configured, and the one
+  that publishes.
+- **A pinned publisher, and the credential only where it publishes.** Releasing runs one
+  external tool, which is also the only thing that ever holds the ClawHub credential. It is
+  installed in its own step from `.github/publish/package-lock.json`, committed to this
+  repository, with an integrity hash for every package in its tree, with npm lifecycle
+  scripts disabled so nothing in that tree can execute during install, and with no secret
+  in that step's environment. The next step supplies the token and runs the binary that
+  install produced. A single `npx clawhub` invocation used to do both jobs at
+  once: that pinned the top-level version and left everything underneath it to be resolved
+  by semver range at the moment the release ran, with the token already in scope. Pinning
+  the top level is worth little when the resolution that matters is one level down, so the
+  publisher gets the same treatment as the actions: resolved once, recorded, and updated
+  deliberately by Dependabot.
 - **Nothing is published to npm.** `package.json` is marked `private`, and the npm
   package name is abandoned rather than renamed: this is a skill, not a library, and
   nobody should `npm install` it. Distribution is ClawHub and `git`, which copy the

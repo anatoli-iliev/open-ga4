@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { repoRoot } from "./testing/files.test-support.js";
@@ -24,6 +24,18 @@ import { repoRoot } from "./testing/files.test-support.js";
  */
 
 const workflow = readFileSync(path.join(repoRoot, ".github/workflows/release.yml"), "utf8");
+
+/**
+ * The publisher's pinned install: a manifest and a lockfile that exist only so
+ * the step holding `CLAWHUB_TOKEN` runs a tree this repository has recorded,
+ * and the binary that install produces.
+ */
+const PUBLISH_DIR = ".github/publish";
+const PUBLISHER_BIN = `${PUBLISH_DIR}/node_modules/.bin/clawhub`;
+const INSTALL_STEP = "Install the pinned ClawHub publisher";
+const PUBLISH_STEP = "Publish to ClawHub";
+/** The step that installs the project's own devDependencies, not the publisher. */
+const PROJECT_INSTALL_STEP = "Install dependencies";
 
 /**
  * A top-level block scalar key (`on:`, `permissions:`), isolated from
@@ -79,13 +91,16 @@ describe("the ClawHub publish step", () => {
   });
 
   it("never publishes a bare relative path", () => {
-    // Anchored on `npx clawhub`, not just the words `skill publish`: the
-    // comment above this step names the subcommand too (explaining the trap
-    // this test guards against), and a looser match found that comment
-    // instead of the invocation, passing regardless of what the invocation
-    // below it actually said.
-    const publishLine = workflow.split("\n").find((line) => line.includes("npx clawhub"));
-    expect(publishLine, "no `npx clawhub ... skill publish` invocation found in release.yml").toBeDefined();
+    // Read out of the step's own `run:` block rather than found by scanning
+    // the whole file. The comments around this step name the subcommand too
+    // (explaining the trap this test guards against), and an earlier version
+    // of this test matched one of those comments instead of the invocation,
+    // passing regardless of what the invocation actually said. The script is
+    // the only text here that a shell will ever execute.
+    const publishLine = stepRunScript(workflow, PUBLISH_STEP)
+      .split("\n")
+      .find((line) => line.includes("skill publish"));
+    expect(publishLine, `no \`skill publish\` invocation in the ${PUBLISH_STEP} step`).toBeDefined();
     // Catches both `publish .` and `publish "."`: a bare dot, quoted or not,
     // immediately after the subcommand, with nothing before it that would
     // make it absolute.
@@ -139,8 +154,8 @@ describe("the ClawHub tag for a prerelease", () => {
     // continuation (`\`), so `--tags` lands on a different source line than
     // `npx clawhub`; the whole step's script is checked as one string rather
     // than one split line, the same reason `stepRunScript` exists below.
-    const script = stepRunScript(workflow, "Publish to ClawHub");
-    expect(script).toContain("npx clawhub");
+    const script = stepRunScript(workflow, PUBLISH_STEP);
+    expect(script).toContain("skill publish");
     expect(script).toContain('--tags "$CLAWHUB_TAGS"');
   });
 });
@@ -287,4 +302,299 @@ describe("workflow permissions stay minimal", () => {
       expect(lines).toEqual(["contents: read"]);
     });
   }
+});
+
+/**
+ * Every step of the one job in this workflow, in file order, each with the
+ * lines that belong to it.
+ *
+ * **Full-line comments are stripped before the split.** That is what makes the
+ * step boundaries reliable: a comment block sits at the same indentation as
+ * the `- name:` below it and explains the step it precedes, so attributing
+ * those lines by indentation alone would file the next step's prose under the
+ * previous step. Once comments are gone, everything between two `- name:`
+ * lines is the first step's body and nothing else. It also means these tests
+ * assert on what the runner would execute rather than on what a comment claims,
+ * which is the whole point of testing a workflow file. Trailing comments (the
+ * ` # v7.0.1` after an action SHA) survive and are harmless.
+ *
+ * Anything before the first step (the trigger, the permissions block, a
+ * job-level `env:`) is collected under `JOB_LEVEL`, so a secret introduced
+ * there rather than on a step is visible to the checks below instead of
+ * silently belonging to nobody.
+ */
+const JOB_LEVEL = "the workflow or job itself, outside any step";
+
+function workflowSteps(yaml: string): Array<{ name: string; body: string }> {
+  const collected: Array<{ name: string; body: string }> = [{ name: JOB_LEVEL, body: "" }];
+  for (const line of yaml.split("\n")) {
+    if (line.trim().startsWith("#")) {
+      continue;
+    }
+    const named = /^\s*- name:\s*(.+?)\s*$/.exec(line);
+    if (named) {
+      collected.push({ name: named[1]!, body: "" });
+      continue;
+    }
+    collected[collected.length - 1]!.body += `${line}\n`;
+  }
+  return collected;
+}
+
+function stepBody(yaml: string, stepName: string): string {
+  const step = workflowSteps(yaml).find((candidate) => candidate.name === stepName);
+  if (!step) {
+    throw new Error(`no step named "${stepName}" found in release.yml`);
+  }
+  return step.body;
+}
+
+/** Every npm install invocation in the workflow, with the step it runs in. */
+function npmInstallLines(yaml: string): Array<{ step: string; line: string }> {
+  const found: Array<{ step: string; line: string }> = [];
+  for (const step of workflowSteps(yaml)) {
+    for (const line of step.body.split("\n")) {
+      if (/\bnpm\s+(?:ci|install|i)\b/.test(line)) {
+        found.push({ step: step.name, line: line.trim() });
+      }
+    }
+  }
+  return found;
+}
+
+/** Every step whose lines reference a repository secret. */
+function stepsReadingASecret(yaml: string): string[] {
+  return workflowSteps(yaml)
+    .filter((step) => /\$\{\{\s*secrets\./.test(step.body))
+    .map((step) => step.name);
+}
+
+/**
+ * The publisher's pinned install, read from the two committed files rather
+ * than from a version written down here.
+ */
+function publisherManifest(): {
+  private?: boolean;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+} {
+  return JSON.parse(readFileSync(path.join(repoRoot, PUBLISH_DIR, "package.json"), "utf8"));
+}
+
+function publisherLockfile(): {
+  lockfileVersion: number;
+  packages?: Record<string, { version?: string; resolved?: string; integrity?: string }>;
+} {
+  return JSON.parse(readFileSync(path.join(repoRoot, PUBLISH_DIR, "package-lock.json"), "utf8"));
+}
+
+/**
+ * The publish step is the only place in this repository that runs code it did
+ * not write while holding a credential that can put a listing on ClawHub, and
+ * whoever holds that credential can ship arbitrary JavaScript to every machine
+ * that installs this skill, which is a machine with a Google service-account
+ * private key on it. That is the worst outcome reachable from this repository,
+ * so the two properties that stand between the two are pinned here.
+ *
+ * The defect these replace: the step ran `npx clawhub@<version> skill publish`,
+ * which pins the top-level package and nothing beneath it. Every transitive
+ * dependency was resolved by semver range at the moment the release ran and
+ * unpacked with npm lifecycle scripts enabled, in a step whose environment held
+ * `CLAWHUB_TOKEN` and `GH_TOKEN`. A hijacked patch version anywhere in that
+ * tree could read the token from `process.env` during install. The project's
+ * own devDependencies never had that exposure: they come from a committed
+ * `package-lock.json` with an integrity hash per package.
+ *
+ * Neither half is observable from anything else in the suite. `npm test` cannot
+ * run GitHub Actions, and a release runs once, unattended, with a real token,
+ * which is the worst possible place to discover that a "simplification" back to
+ * one `npx` line undid this.
+ */
+describe("the pinned ClawHub publisher", () => {
+  it("is installed from a manifest and a lockfile committed to this repository", () => {
+    for (const file of [`${PUBLISH_DIR}/package.json`, `${PUBLISH_DIR}/package-lock.json`]) {
+      expect(existsSync(path.join(repoRoot, file)), `${file} is missing`).toBe(true);
+    }
+  });
+
+  /**
+   * The one requirement that makes the lockfile mean anything: a range in the
+   * manifest with a lockfile beside it is still deterministic until somebody
+   * runs `npm install`, at which point the range silently picks up whatever is
+   * newest. An exact version says the pin is deliberate.
+   */
+  it("names the publisher at an exact version, never a range or a dist-tag", () => {
+    const manifest = publisherManifest();
+    const declared = { ...manifest.dependencies, ...manifest.devDependencies };
+    expect(Object.keys(declared), "the publisher manifest should declare clawhub and nothing else")
+      .toEqual(["clawhub"]);
+    const spec = declared.clawhub!;
+    expect(spec, `clawhub is pinned as "${spec}", which is not an exact version`)
+      .toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+  });
+
+  /**
+   * This skill installs no npm package on a user's machine, and five documents
+   * build an argument on that. A second `package.json` in the repository is the
+   * one thing that could make that claim ambiguous, so the publisher is
+   * declared where npm itself puts tooling, and the manifest is marked private
+   * so it can never be published as a package in its own right.
+   */
+  it("is declared as tooling, so it cannot be read as something the skill installs", () => {
+    const manifest = publisherManifest();
+    expect(manifest.private, "the publisher manifest must be private").toBe(true);
+    expect(manifest.dependencies ?? {}, "the publisher is tooling; declare it under devDependencies")
+      .toEqual({});
+    expect(manifest.peerDependencies ?? {}).toEqual({});
+    expect(Object.keys(manifest.devDependencies ?? {})).toEqual(["clawhub"]);
+  });
+
+  /**
+   * The whole point of choosing a lockfile over a bare `--ignore-scripts`
+   * install: an integrity hash for every package in the tree, not just
+   * determinism at the moment somebody last resolved it. Without the hashes,
+   * `npm ci` would still fetch whatever the recorded URL serves today.
+   */
+  it("records every package in the publisher's tree, each with an integrity hash", () => {
+    const lockfile = publisherLockfile();
+    expect(lockfile.lockfileVersion, "lockfileVersion 2 or newer is what carries `packages`")
+      .toBeGreaterThanOrEqual(2);
+    const packages = Object.entries(lockfile.packages ?? {}).filter(([name]) => name !== "");
+    // A lockfile holding only the root entry would pass every check below
+    // while pinning nothing at all.
+    expect(packages.length, "the publisher lockfile resolves no dependencies").toBeGreaterThan(1);
+    const unpinned = packages
+      .filter(([, entry]) => !entry.integrity || !entry.resolved)
+      .map(([name]) => name);
+    expect(unpinned, "every package in the publisher's tree needs an integrity hash").toEqual([]);
+  });
+
+  it("locks the same version the manifest asks for", () => {
+    const manifest = publisherManifest();
+    const spec = { ...manifest.dependencies, ...manifest.devDependencies }.clawhub;
+    expect(publisherLockfile().packages?.["node_modules/clawhub"]?.version).toBe(spec);
+  });
+
+  /**
+   * An install script is the vector that does not need the publisher itself to
+   * be compromised, only something it depends on, and it runs before a single
+   * line of the tool's own code does. Nothing in the tree declares one today,
+   * which is exactly why the flag has to be pinned rather than trusted: a
+   * hijacked patch version adding one is the attack, and it would arrive
+   * between two releases with nobody looking.
+   *
+   * Scoped to every step except the project's own `npm ci`, so a future step
+   * that installs anything else in this credential-bearing workflow has to
+   * argue with this test first. The project's install is deliberately exempt:
+   * `esbuild` and `fsevents` in the root lockfile both declare install scripts
+   * and vitest does not work without them, and that install is integrity-hashed
+   * from a committed lockfile with no secret in its environment.
+   */
+  it("installs the publisher with npm lifecycle scripts disabled", () => {
+    const installs = npmInstallLines(workflow);
+    expect(installs.length, "no npm install invocation found in release.yml").toBeGreaterThan(0);
+    const publisherInstalls = installs.filter((install) => install.step !== PROJECT_INSTALL_STEP);
+    expect(publisherInstalls.length, `no install step other than ${PROJECT_INSTALL_STEP}`)
+      .toBeGreaterThan(0);
+    for (const install of publisherInstalls) {
+      expect(install.line, `${install.step} installs without --ignore-scripts`)
+        .toContain("--ignore-scripts");
+    }
+  });
+
+  it("installs the publisher from the pinned directory", () => {
+    const script = stepRunScript(workflow, INSTALL_STEP);
+    expect(script).toContain(PUBLISH_DIR);
+    expect(script).toContain("npm ci");
+  });
+
+  /**
+   * Splitting install from publish is the other half of the fix, and it is
+   * worth nothing if the install step can still see the token: an install
+   * script reads `process.env`, so a secret present in that step is a secret
+   * an unvetted tarball can exfiltrate before any of this repository's own
+   * code runs.
+   */
+  it("puts no secret in the install step's environment", () => {
+    expect(stepBody(workflow, INSTALL_STEP)).not.toMatch(/\$\{\{\s*secrets\./);
+    expect(stepBody(workflow, INSTALL_STEP)).not.toContain("CLAWHUB_TOKEN");
+  });
+
+  /**
+   * The same claim as the test above, made as a whitelist rather than an
+   * absence, so a secret added to some third step is caught as well as one
+   * added to the install step. `JOB_LEVEL` covers a job-level `env:` block,
+   * which would hand a secret to every step at once, install included, without
+   * any step's own text mentioning it.
+   */
+  it("gives a secret only to the step that checks for it and the step that uses it", () => {
+    expect(stepsReadingASecret(workflow)).toEqual(["Require CLAWHUB_TOKEN", PUBLISH_STEP]);
+  });
+
+  /**
+   * `npx` is the shape of the original defect. `npx clawhub@0.23.3` reads as
+   * pinned and is not: it resolves and installs a fresh dependency tree, in
+   * this step, with the token already in scope. Checked against the workflow
+   * with its comments stripped, because the comments explaining why this is
+   * banned necessarily contain the word.
+   */
+  it("never resolves the publisher through npx", () => {
+    const executable = workflowSteps(workflow)
+      .map((step) => step.body)
+      .join("\n");
+    expect(executable, "npx resolves at release time; use the pinned install").not.toMatch(/\bnpx\b/);
+  });
+
+  it("runs the publisher binary the pinned install produced, by absolute path", () => {
+    const script = stepRunScript(workflow, PUBLISH_STEP);
+    expect(script).toContain(`"$GITHUB_WORKSPACE/${PUBLISHER_BIN}" skill publish`);
+  });
+
+  /**
+   * Ordering: the binary has to exist before it is invoked, and the two steps
+   * have to stay two steps. Merging them back into one, which is the tidy-up
+   * this whole group exists to prevent, is caught by the secret checks above;
+   * this catches the other direction, an install step reordered to after the
+   * step that uses it.
+   */
+  it("installs the publisher before the step that publishes", () => {
+    const names = workflowSteps(workflow).map((step) => step.name);
+    expect(names).toContain(INSTALL_STEP);
+    expect(names.indexOf(INSTALL_STEP)).toBeLessThan(names.indexOf(PUBLISH_STEP));
+  });
+});
+
+/**
+ * SECURITY.md describes the release path to somebody deciding whether to trust
+ * this skill with a Google credential, and a claim there that quietly stops
+ * being true is worse than no claim: a reader has no way to check it without
+ * reading the workflow themselves, which is the work the document is meant to
+ * save them. Same shape as the committed-build-output claim in
+ * `src/docs.test.ts`: the claim is allowed to be made only while the mechanism
+ * behind it is still in place, and deleting the sentence is the honest way out
+ * if it ever is not.
+ */
+describe("SECURITY.md's claim about how the publisher is installed", () => {
+  const CLAIM = "with an integrity hash for every package in its tree";
+  const security = readFileSync(path.join(repoRoot, "SECURITY.md"), "utf8");
+
+  it("is made", () => {
+    expect(security).toContain(CLAIM);
+  });
+
+  it("cannot outlive the pinned install it describes", () => {
+    if (!security.includes(CLAIM)) {
+      // Nothing to hold honest: the document no longer makes the claim.
+      return;
+    }
+    expect(existsSync(path.join(repoRoot, PUBLISH_DIR, "package-lock.json")), "the lockfile is gone")
+      .toBe(true);
+    const install = stepRunScript(workflow, INSTALL_STEP);
+    expect(install, "the publisher is no longer installed with npm ci").toContain("npm ci");
+    expect(install, "the publisher install no longer disables lifecycle scripts")
+      .toContain("--ignore-scripts");
+    expect(stepBody(workflow, INSTALL_STEP), "the install step can now see a secret")
+      .not.toMatch(/\$\{\{\s*secrets\./);
+  });
 });

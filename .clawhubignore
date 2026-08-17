@@ -30,10 +30,43 @@
 # Dependencies and version control. Named explicitly rather than assumed:
 # .github/workflows/release.yml publishes after `npm ci`, so node_modules is
 # present in the directory being published, and whether the publisher happens
-# to skip it is not something this repository controls or tests.
+# to skip it is not something this repository controls or tests. There are two
+# such directories during a release, the project's own and the publisher's
+# pinned install under .github/publish/; this pattern has no leading slash, so
+# it matches both at any depth, and .github/ below excludes the second anyway.
 node_modules/
 .git/
 package-lock.json
+
+# Credentials. These patterns mirror .gitignore's own credential block
+# deliberately, and src/build.test.ts asserts the two files still agree, so a
+# pattern added to one and forgotten in the other fails the suite.
+#
+# Why this file needs them at all, given .gitignore has them. .gitignore
+# decides what reaches git; this file decides what leaves the machine, and the
+# two are not the same publish path. The real release publishes a clean CI
+# checkout, where no such file exists, so nothing here is exposed today. The
+# local form documented at the top of this file is the one that matters:
+# `clawhub skill publish "$PWD"` uploads the working tree it is pointed at, and
+# a working tree is exactly where a key file lands while somebody is setting
+# this up or reproducing a bug. Git would refuse to commit it and the registry
+# would publish it. That asymmetry is the whole reason for this block.
+#
+# Named rather than assumed, the same rule the rest of this file follows: no
+# claim about what the publisher happens to skip is being made here.
+#
+# One line of .gitignore's block is deliberately not mirrored: `!.env.example`,
+# the negation that lets an example file be committed. No such file exists, and
+# an ignore rule for a file that is not there protects nothing while looking
+# like protection. If one is ever added and is worth shipping, add the
+# negation then, in this block, where the reasoning is.
+*.pem
+*.key
+*-key.json
+*service-account*.json
+application_default_credentials.json
+.env
+.env.*
 
 # Build and test configuration. The skill runs from lib/, which is committed;
 # nothing in the installed folder compiles or runs a test suite.

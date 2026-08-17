@@ -19,6 +19,25 @@ updates:
       dev-dependencies:
         dependency-type: development
 
+  # The ClawHub publisher used by .github/workflows/release.yml, pinned to an
+  # exact version with a committed lockfile so the one tool that holds
+  # CLAWHUB_TOKEN is not resolved by semver range at release time. That
+  # workflow's own comments explain the attack this closes. Watching the
+  # directory is what keeps the pin from rotting, exactly the trade the action
+  # SHAs below make. Release tooling: clawhub is a devDependency of that
+  # manifest and no user of the skill installs it.
+  - package-ecosystem: npm
+    directory: /.github/publish
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+      prefix-development: deps-dev
+
   # CI pins every action by full commit SHA. This is what keeps the pins from
   # rotting: Dependabot bumps the SHA and rewrites the trailing version comment.
   - package-ecosystem: github-actions

@@ -1,0 +1,13 @@
+{
+  "name": "open-ga4-release-publisher",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pins the ClawHub publisher CLI for .github/workflows/release.yml, so the tool that holds CLAWHUB_TOKEN resolves from a committed, integrity-hashed lockfile instead of fresh semver ranges. Release tooling only: the open-ga4 skill installs, ships and loads nothing from here, and this manifest is not part of what a user gets. See the two publisher steps in .github/workflows/release.yml for why it exists, and src/release-workflow.test.ts for what is pinned about it.",
+  "license": "MIT-0",
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "devDependencies": {
+    "clawhub": "0.23.3"
+  }
+}

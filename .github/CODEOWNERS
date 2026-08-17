@@ -77,6 +77,11 @@
 /.github/workflows/             @anatoli-iliev
 /.github/dependabot.yml         @anatoli-iliev
 
+# The pinned install of the ClawHub publisher. These two files decide which
+# code runs in the step that holds CLAWHUB_TOKEN, so they are the release
+# credential's real blast radius.
+/.github/publish/               @anatoli-iliev
+
 # ---------------------------------------------------------------------------
 # Published contract and legal text.
 #
