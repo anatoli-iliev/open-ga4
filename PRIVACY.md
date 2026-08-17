@@ -166,9 +166,20 @@ channels, including the two sharpest shapes of the bypass (an existence check fo
 id, and a `begins_with` walk that enumerates ids a character at a time).
 
 `src/runtime.ts` also reads the property's live metadata and hands `classifyDimension`
-the custom definitions it finds there. That set is filtered to the same `customUser:`
-prefix, so today it confirms the prefix rule rather than extending it; the outcome
-above comes from the prefix, not from the metadata call.
+the names *that* property treats as person-identifying, which is more than the rules
+above can know:
+
+- Its user-scoped custom definitions. These all carry the `customUser:` prefix, so here
+  the metadata confirms the prefix rule rather than extending it.
+- Every **deprecated alias** of anything the rules block. `getMetadata` returns
+  `deprecatedApiNames` alongside `apiName`, and Google still accepts the old spellings,
+  so a name-based check that ignores that field is complete only by luck. Both
+  directions are covered: an old alias of `userId`, and a *new* name whose deprecated
+  alias is `userId`, which is the same column under a name the rules have never heard
+  of. A dimension's names stand or fall together.
+
+If the metadata call fails, the rules above still apply: they are the gate, and this
+sharpens it. What is lost is the property-specific extra.
 
 The refusal names the exact setting that lifts it, the `GA4_ALLOW_USER_DIMENSIONS`
 environment variable, and suggests `totalUsers` or `activeUsers`, which answer "how

@@ -201,9 +201,9 @@ export function assertRealtimeFields(
   dimensions: readonly string[],
   metrics: readonly string[],
   policy: AccessPolicy,
-  userScopedCustom: ReadonlySet<string> = new Set(),
+  propertyIdentifying: ReadonlySet<string> = new Set(),
 ): void {
-  assertDimensionsAllowed(dimensions, policy, userScopedCustom);
+  assertDimensionsAllowed(dimensions, policy, propertyIdentifying);
 
   const badDimensions = dimensions.filter(
     (name) => !REALTIME_DIMENSIONS.has(name) && !REALTIME_CUSTOM_DIMENSION.test(name),

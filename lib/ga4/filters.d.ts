@@ -45,7 +45,7 @@ export type BuiltFilters = {
  * looked like an ordinary page report. Requiring the policy as an argument
  * makes it impossible to add a caller that quietly skips it.
  */
-export declare function buildFilters(conditions: readonly FilterCondition[], metrics: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>): BuiltFilters;
+export declare function buildFilters(conditions: readonly FilterCondition[], metrics: readonly string[], policy: AccessPolicy, propertyIdentifying?: ReadonlySet<string>): BuiltFilters;
 /**
  * The sort key, as the metric or dimension ordering the API expects.
  *
@@ -56,4 +56,4 @@ export declare function buildFilters(conditions: readonly FilterCondition[], met
  * order a report gets the policy check by construction rather than by
  * remembering.
  */
-export declare function buildOrderBys(orderBy: string | undefined, metrics: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>): OrderBy[] | undefined;
+export declare function buildOrderBys(orderBy: string | undefined, metrics: readonly string[], policy: AccessPolicy, propertyIdentifying?: ReadonlySet<string>): OrderBy[] | undefined;

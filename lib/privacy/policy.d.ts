@@ -1,3 +1,4 @@
+import type { FieldMetadata } from "../ga4/client.js";
 import { Ga4Error } from "../ga4/errors.js";
 /**
  * Dimensions Google's own thresholding exists to protect. Allowed, because
@@ -7,12 +8,40 @@ import { Ga4Error } from "../ga4/errors.js";
 export declare const THRESHOLD_PRONE_DIMENSIONS: readonly string[];
 export type DimensionClass = "user-identifying" | "free-text" | "ordinary";
 /**
- * @param userScopedCustom Dimension names the property reports as user-scoped
- *   custom definitions. Supplying these from a live `getMetadata` response
- *   means custom dimensions added to a property *after* this skill shipped are
- *   still classified correctly, with no skill update.
+ * @param propertyIdentifying Names this property, specifically, treats as
+ *   person-identifying, from `userIdentifyingDimensionNames` below: its
+ *   user-scoped custom definitions, and every deprecated alias of anything the
+ *   static rules block. Supplying these from a live `getMetadata` response means
+ *   a custom dimension created on a property *after* this skill shipped, or an
+ *   old spelling Google still accepts, is classified correctly with no skill
+ *   update. Empty is a valid argument: the static rules above are the gate, and
+ *   this sharpens them.
  */
-export declare function classifyDimension(name: string, userScopedCustom?: ReadonlySet<string>): DimensionClass;
+export declare function classifyDimension(name: string, propertyIdentifying?: ReadonlySet<string>): DimensionClass;
+/**
+ * Every name this property will answer to for a dimension the rules above call
+ * person-identifying, deprecated aliases included.
+ *
+ * The rules above match on a name, and a GA4 property answers to more than one
+ * name per dimension: `getMetadata` returns `deprecatedApiNames` alongside
+ * `apiName`, and the API still accepts the old spellings. That field was parsed
+ * and never consulted, which left the check name-complete only by luck. Two ways
+ * for a name to slip past, and this closes both by treating a dimension's names
+ * as one group that stands or falls together:
+ *
+ * - An alias for a blocked dimension. Metadata says `apiName: "userId"` with a
+ *   deprecated `"uid"`; `--dimensions uid` classified as ordinary and Google
+ *   accepted it.
+ * - A rename *of* a blocked dimension. Metadata says `apiName: "personId"` with
+ *   a deprecated `"userId"`; the new name is unknown to the rules, and it is the
+ *   same dimension.
+ *
+ * Fed to `classifyDimension` as its `propertyIdentifying` argument, which is why
+ * that parameter is a set of names rather than a predicate: it already existed
+ * for live custom definitions, and this is more of the same thing, names this
+ * property treats as person-identifying that a shipped list cannot know.
+ */
+export declare function userIdentifyingDimensionNames(dimensions: readonly FieldMetadata[]): Set<string>;
 /** Dimensions in this request that make Google's thresholding likely. */
 export declare function thresholdProneDimensions(dimensions: readonly string[]): string[];
 export type AccessPolicy = {
@@ -78,7 +107,7 @@ export type DimensionUse = "columns" | "filter" | "sort";
  * the worst way, because the refusal it left in place made the skill look like
  * it was enforcing something it was not.
  */
-export declare function assertDimensionsAllowed(dimensions: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>, use?: DimensionUse): void;
+export declare function assertDimensionsAllowed(dimensions: readonly string[], policy: AccessPolicy, propertyIdentifying?: ReadonlySet<string>, use?: DimensionUse): void;
 export declare function assertPropertyAllowed(propertyId: string, policy: AccessPolicy): void;
 /**
  * Turn whatever the user pasted into a bare numeric property id.

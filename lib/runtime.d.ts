@@ -20,8 +20,12 @@ export type Ga4Runtime = {
     probes(): CredentialProbe[];
     resolveProperty(explicit?: string): string;
     metadata(propertyId: string, signal?: AbortSignal): Promise<MetadataResponse>;
-    /** Dimension names this property reports as user-scoped custom definitions. */
-    userScopedCustomDimensions(propertyId: string, signal?: AbortSignal): Promise<Set<string>>;
+    /**
+     * Dimension names this property, specifically, treats as person-identifying:
+     * its user-scoped custom definitions and every deprecated alias of anything
+     * the policy blocks. Names a shipped list cannot know.
+     */
+    userIdentifyingDimensions(propertyId: string, signal?: AbortSignal): Promise<Set<string>>;
 };
 export type RuntimeOptions = {
     config: ResolvedConfig;

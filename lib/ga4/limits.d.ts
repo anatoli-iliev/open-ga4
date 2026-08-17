@@ -82,4 +82,4 @@ export declare const REALTIME_METRICS: ReadonlySet<string>;
  * from the one command that has a permissive `customUser:` rule of its own,
  * which is the worst place for it to be missing from.
  */
-export declare function assertRealtimeFields(dimensions: readonly string[], metrics: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>): void;
+export declare function assertRealtimeFields(dimensions: readonly string[], metrics: readonly string[], policy: AccessPolicy, propertyIdentifying?: ReadonlySet<string>): void;

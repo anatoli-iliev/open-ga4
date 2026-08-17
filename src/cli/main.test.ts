@@ -19,7 +19,7 @@ type Recorded = { propertyId: string; request: RunReportRequest };
 
 /**
  * A Ga4Runtime that never touches disk or the network: `client()`, `metadata()`
- * and `userScopedCustomDimensions()` are all hand-written stubs, not the real
+ * and `userIdentifyingDimensions()` are all hand-written stubs, not the real
  * implementations in src/runtime.ts, so nothing here can reach a real
  * credential file or a real Google request no matter what is installed on the
  * machine running the test. Modeled on the stubRuntime helpers already in
@@ -60,7 +60,7 @@ function fakeRuntime(
     probes: () => [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
     resolveProperty: (explicit) => normalizePropertyId(explicit ?? config.defaultPropertyId!),
     metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 
   return { runtime, calls };
@@ -104,7 +104,7 @@ function runtimeStuckOnNoPropertySelected(secondCall: AccountSummary[] | Error):
       return normalizePropertyId(explicit);
     },
     metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 }
 
@@ -139,7 +139,7 @@ function runtimeWithNoCredentials(): Ga4Runtime {
       );
     },
     metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 }
 
@@ -420,7 +420,7 @@ describe("client-side validation exits 2, not 1 or 4", () => {
   // them can reach runtime.client() regardless of what credentials the
   // machine running the test happens to have. The fourth needs a property to
   // resolve successfully to reach the check under test, which would then
-  // reach runtime.client() through userScopedCustomDimensions if driven
+  // reach runtime.client() through userIdentifyingDimensions if driven
   // through main()'s real runtime, so it uses dispatch() with fakeRuntime()
   // instead, exactly to avoid that.
   it("names an unknown preset on report and exits 2", async () => {
@@ -472,7 +472,7 @@ describe("client-side validation exits 2, not 1 or 4", () => {
  * runtime.client() is ever touched, so none can reach a credential or a
  * socket regardless of what is installed on the machine running the test.
  * The privacy refusal is the exception, because runQuery consults
- * userScopedCustomDimensions (which does call client()) before checking the
+ * userIdentifyingDimensions (which does call client()) before checking the
  * policy, so it goes through dispatch() with fakeRuntime() instead.
  */
 describe("a refusal made locally never reports itself as Google refusing", () => {

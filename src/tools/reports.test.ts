@@ -18,7 +18,7 @@ type Recorded = { propertyId: string; request: RunReportRequest };
 function stubRuntime(
   response: RunReportResponse = {},
   envOverrides: Parameters<typeof configFromEnv>[0] = {},
-  userScopedCustom: ReadonlySet<string> = new Set<string>(),
+  userIdentifying: ReadonlySet<string> = new Set<string>(),
 ): {
   runtime: Ga4Runtime;
   calls: Recorded[];
@@ -60,7 +60,7 @@ function stubRuntime(
       return propertyId;
     },
     metadata: async () => ({}),
-    userScopedCustomDimensions: async () => new Set(userScopedCustom),
+    userIdentifyingDimensions: async () => new Set(userIdentifying),
   };
 
   return { runtime, calls, realtimeCalls, audited };

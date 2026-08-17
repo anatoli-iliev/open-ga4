@@ -146,12 +146,12 @@ export function buildFilters(
   conditions: readonly FilterCondition[],
   metrics: readonly string[],
   policy: AccessPolicy,
-  userScopedCustom: ReadonlySet<string> = new Set(),
+  propertyIdentifying: ReadonlySet<string> = new Set(),
 ): BuiltFilters {
   assertDimensionsAllowed(
     conditions.filter((condition) => !metrics.includes(condition.field)).map((c) => c.field),
     policy,
-    userScopedCustom,
+    propertyIdentifying,
     "filter",
   );
 
@@ -202,7 +202,7 @@ export function buildOrderBys(
   orderBy: string | undefined,
   metrics: readonly string[],
   policy: AccessPolicy,
-  userScopedCustom: ReadonlySet<string> = new Set(),
+  propertyIdentifying: ReadonlySet<string> = new Set(),
 ): OrderBy[] | undefined {
   if (!orderBy) {
     return undefined;
@@ -210,6 +210,6 @@ export function buildOrderBys(
   if (metrics.includes(orderBy)) {
     return [{ desc: true, metric: { metricName: orderBy } }];
   }
-  assertDimensionsAllowed([orderBy], policy, userScopedCustom, "sort");
+  assertDimensionsAllowed([orderBy], policy, propertyIdentifying, "sort");
   return [{ desc: true, dimension: { dimensionName: orderBy } }];
 }

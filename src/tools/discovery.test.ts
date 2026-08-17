@@ -59,7 +59,7 @@ function stubRuntime(options: StubOptions = {}): { runtime: Ga4Runtime; client: 
       return propertyId;
     },
     metadata: async () => options.metadata ?? {},
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 
   return { runtime, client };

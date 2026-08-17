@@ -187,7 +187,7 @@ export async function runReport(
     notes.push(preset.note);
   }
 
-  const custom = await runtime.userScopedCustomDimensions(propertyId, signal);
+  const custom = await runtime.userIdentifyingDimensions(propertyId, signal);
   assertDimensionsAllowed(preset.dimensions, runtime.config.access, custom);
 
   let dimensionFilter = preset.dimensionFilter;
@@ -342,7 +342,7 @@ export async function runCompare(
   const previous = precedingRange(current);
   const limit = params.limit ?? 10;
 
-  const custom = await runtime.userScopedCustomDimensions(propertyId, signal);
+  const custom = await runtime.userIdentifyingDimensions(propertyId, signal);
   assertDimensionsAllowed(preset.dimensions, runtime.config.access, custom);
   assertWithinLimits({
     dimensions: preset.dimensions,
@@ -484,7 +484,7 @@ export async function runQuery(
     notes.push(range.timezoneNote);
   }
 
-  const custom = await runtime.userScopedCustomDimensions(propertyId, signal);
+  const custom = await runtime.userIdentifyingDimensions(propertyId, signal);
   assertDimensionsAllowed(dimensionRename.names, runtime.config.access, custom);
   assertWithinLimits({
     dimensions: dimensionRename.names,

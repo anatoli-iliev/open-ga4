@@ -8,6 +8,7 @@ import {
   assertPropertyAllowed,
   classifyDimension,
   normalizePropertyId,
+  userIdentifyingDimensionNames,
 } from "./policy.js";
 
 describe("classifyDimension", () => {
@@ -38,6 +39,66 @@ describe("classifyDimension", () => {
       expect(classifyDimension(name)).toBe("ordinary");
     },
   );
+});
+
+/**
+ * The static rules match on a name, and a GA4 property answers to more than one
+ * name per dimension. `getMetadata` returns `deprecatedApiNames` next to
+ * `apiName` and the API still accepts the old spellings, so a name-based check
+ * that ignores that field is complete only by luck. It was parsed and never
+ * read.
+ */
+describe("userIdentifyingDimensionNames", () => {
+  it("blocks a deprecated alias of a blocked dimension", () => {
+    const names = userIdentifyingDimensionNames([
+      { apiName: "userId", deprecatedApiNames: ["uid"] },
+    ]);
+    expect(names.has("uid")).toBe(true);
+    expect(classifyDimension("uid", names)).toBe("user-identifying");
+  });
+
+  it("blocks a new name whose deprecated alias is a blocked dimension", () => {
+    // The other direction, and the likelier one: Google renames the dimension,
+    // the new name means nothing to the rules above, and it is the same column.
+    const names = userIdentifyingDimensionNames([
+      { apiName: "personId", deprecatedApiNames: ["userId"] },
+    ]);
+    expect(names.has("personId")).toBe(true);
+    expect(classifyDimension("personId", names)).toBe("user-identifying");
+  });
+
+  it("carries a user-scoped custom dimension and its old spelling together", () => {
+    const names = userIdentifyingDimensionNames([
+      { apiName: "customUser:crm_id", customDefinition: true, deprecatedApiNames: ["customUser:crm"] },
+    ]);
+    expect([...names].sort()).toEqual(["customUser:crm", "customUser:crm_id"]);
+  });
+
+  it("blocks nothing for a dimension no rule matches, alias or not", () => {
+    const names = userIdentifyingDimensionNames([
+      { apiName: "pagePath", deprecatedApiNames: ["pagePathOld"] },
+      { apiName: "country" },
+    ]);
+    expect([...names]).toEqual([]);
+  });
+
+  it("survives metadata with no names at all rather than blocking the empty string", () => {
+    const names = userIdentifyingDimensionNames([{}, { apiName: "" }, { deprecatedApiNames: [] }]);
+    expect([...names]).toEqual([]);
+    // An empty entry in the set would make classifyDimension("") blocked, and a
+    // set that blocks nothing is the only correct answer for metadata that names
+    // nothing.
+    expect(classifyDimension("", names)).toBe("ordinary");
+  });
+
+  it("refuses a filter on a deprecated alias, not only a column of one", () => {
+    const names = userIdentifyingDimensionNames([
+      { apiName: "userId", deprecatedApiNames: ["uid"] },
+    ]);
+    expect(() => assertDimensionsAllowed(["uid"], DEFAULT_ACCESS_POLICY, names, "filter")).toThrow(
+      /identifies individual people/,
+    );
+  });
 });
 
 describe("assertDimensionsAllowed", () => {
