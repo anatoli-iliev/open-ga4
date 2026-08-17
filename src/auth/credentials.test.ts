@@ -237,6 +237,46 @@ describe("GA4_CREDENTIALS", () => {
     expect(result.probes.map((probe) => probe.status)).toEqual(["invalid", "used"]);
   });
 
+  /**
+   * The guard that refuses to treat an obviously-pasted key as a path used to
+   * trip on the literal words "PRIVATE KEY", which is a legitimate thing to
+   * call a directory. Somebody keeping their key in `~/PRIVATE KEYS/` had it
+   * refused, and the refusal deliberately does not say what tripped it
+   * (naming the marker would itself be an excerpt of a key), so the message
+   * could not help them. Narrowed to `-----BEGIN`, which every PEM block
+   * carries and which no ordinary path does.
+   */
+  it("reads a path whose directory is named PRIVATE KEYS instead of refusing it", async () => {
+    const attempted: string[] = [];
+    const result = await resolveCredentials({
+      env: { GA4_CREDENTIALS: "/home/ada/PRIVATE KEYS/ga4.json" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        attempted.push(filePath);
+        return SERVICE_ACCOUNT;
+      },
+    });
+    expect(attempted).toContain("/home/ada/PRIVATE KEYS/ga4.json");
+    expect(result.ok).toBe(true);
+  });
+
+  it("still refuses a pasted PEM block rather than reading it as a path", async () => {
+    const attempted: string[] = [];
+    const result = await resolveCredentials({
+      // One line, short enough to look like a path to the other two checks:
+      // the PEM header is the only thing that gives it away.
+      env: { GA4_CREDENTIALS: "-----BEGIN PRIVATE KEY----- MIIBdeadbeef -----END PRIVATE KEY-----" },
+      home: "/home/ada",
+      readFileImpl: async (filePath) => {
+        attempted.push(filePath);
+        return SERVICE_ACCOUNT;
+      },
+    });
+    expect(attempted).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result.probes)).not.toContain("deadbeef");
+  });
+
   it("never puts key material into a probe for a GA4_CREDENTIALS path", async () => {
     const result = await resolveCredentials({
       env: { GA4_CREDENTIALS: "/keys/sa.json" },

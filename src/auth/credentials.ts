@@ -79,14 +79,22 @@ const MAX_PLAUSIBLE_PATH_LENGTH = 4096;
  * True when a value that failed the `{`-prefixed inline-JSON check still
  * plainly is not a file path either: a base64-encoded key, a bare PEM
  * block, or JSON that kept its surrounding quotes from a .env file are the
- * common near-misses, and all are either multi-line, unusually long, or say
- * PRIVATE KEY outright. Catching these before a filesystem read is attempted
- * matters because a failed read's own error can embed the attempted path
- * verbatim (see the ENAMETOOLONG/EACCES/ENOTDIR handling below), which would
- * otherwise leak exactly the value this check exists to keep out of a path.
+ * common near-misses, and all are either multi-line, unusually long, or carry
+ * a PEM header. Catching these before a filesystem read is attempted matters
+ * because a failed read's own error can embed the attempted path verbatim
+ * (see the ENAMETOOLONG/EACCES/ENOTDIR handling below), which would otherwise
+ * leak exactly the value this check exists to keep out of a path.
+ *
+ * The PEM test is `-----BEGIN`, not the words `PRIVATE KEY`. Every PEM block
+ * opens with that marker, so nothing real is lost, and a pasted JSON key is
+ * caught earlier by the `{` test regardless. `PRIVATE KEY` on its own also
+ * matched a perfectly ordinary path: somebody who keeps their key in
+ * `~/PRIVATE KEYS/ga4.json` had it refused, and the refusal deliberately does
+ * not say what tripped it (naming the marker would itself be an excerpt of a
+ * private key), so there was no way to work out why from the message.
  */
 function looksLikeAMisplacedKeyRatherThanAPath(value: string): boolean {
-  return value.includes("\n") || value.length > MAX_PLAUSIBLE_PATH_LENGTH || value.includes("PRIVATE KEY");
+  return value.includes("\n") || value.length > MAX_PLAUSIBLE_PATH_LENGTH || value.includes("-----BEGIN");
 }
 
 /**
