@@ -1,15 +1,26 @@
 # What does NOT go into the published skill bundle.
 #
-# The rule this file follows: everything a user or a reviewer needs to run or
-# audit the skill ships; everything that only exists to develop it does not.
+# The rule this file follows: everything needed to run the skill, and to read
+# it, ships; everything that only exists to develop it does not.
 #
-# src/ ships on purpose, tests included, and is deliberately absent from this
-# file. The auditability claim is the product: README.md, PRIVACY.md and
-# SECURITY.md all invite a reader to check the guarantees in the code, and
-# src/privacy/surface.test.ts is the artifact that proves the privacy claims
-# rather than asserting them. ClawHub's security review reads the shipped code,
-# so shipping the source next to the lib/ built from it is what makes the two
-# comparable. lib/ ships because it is what actually runs.
+# **The test suite ships to be read, not to be run.** src/ is deliberately
+# absent from this file, tests included, because the auditability claim is the
+# product: README.md, PRIVACY.md and SECURITY.md all invite a reader to check
+# the guarantees in the code, src/privacy/surface.test.ts is the artifact that
+# proves the privacy claims rather than asserting them, and ClawHub's security
+# review reads the shipped code. Shipping the source next to the lib/ built
+# from it is what makes those two comparable.
+#
+# But an installed copy cannot run `npm test`, and that is a deliberate
+# trade rather than an oversight: vitest.config.ts, scripts/ and .github/ are
+# excluded below, and two of the shipped tests read paths that are excluded
+# anyway (src/docs.test.ts reads .github/CODEOWNERS, src/cli/shim.test.ts
+# reads scripts/build-lib.mjs). Anyone who wants to run the suite clones the
+# repository and runs `npm install`, which is CONTRIBUTING.md's first step.
+# Shipping the several files that would make an installed copy runnable buys a
+# workflow nobody uses, on top of a devDependency the bundle does not carry.
+#
+# lib/ ships because it is what actually runs.
 #
 # Verify a change here with:
 #   clawhub skill publish "$PWD" --slug open-ga4 --name "Open GA4" \

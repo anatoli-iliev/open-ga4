@@ -65,6 +65,22 @@ describe(".clawhubignore, which decides what is published", () => {
     expect(existsSync(ignorePath)).toBe(true);
   });
 
+  it("does not promise a runnable suite while excluding what running one needs", () => {
+    // The header used to say everything needed to "run or audit" the skill
+    // ships, which was false in one direction: the tests ship, and an
+    // installed copy cannot run them, because the runner's configuration and
+    // two paths those tests read are excluded. Either half is a defensible
+    // choice; claiming both at once is not. If somebody later ships what makes
+    // the suite runnable, they can drop the sentence and this stops applying.
+    const text = readFileSync(ignorePath, "utf8");
+    const needed = ["vitest.config.ts", "scripts/", ".github/"];
+    const excluded = needed.filter((pattern) => patterns().includes(pattern));
+    if (excluded.length > 0) {
+      expect(text, `${excluded.join(", ")} are excluded, so the header must not promise a runnable suite`)
+        .toMatch(/cannot run|not runnable|to be read, not to be run/i);
+    }
+  });
+
   it("excludes everything that only exists to develop the skill", () => {
     for (const pattern of [
       "node_modules/",
