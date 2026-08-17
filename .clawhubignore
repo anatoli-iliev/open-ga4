@@ -1,0 +1,39 @@
+# What does NOT go into the published skill bundle.
+#
+# The rule this file follows: everything a user or a reviewer needs to run or
+# audit the skill ships; everything that only exists to develop it does not.
+#
+# src/ ships on purpose, tests included, and is deliberately absent from this
+# file. The auditability claim is the product: README.md, PRIVACY.md and
+# SECURITY.md all invite a reader to check the guarantees in the code, and
+# src/privacy/surface.test.ts is the artifact that proves the privacy claims
+# rather than asserting them. ClawHub's security review reads the shipped code,
+# so shipping the source next to the lib/ built from it is what makes the two
+# comparable. lib/ ships because it is what actually runs.
+#
+# Verify a change here with:
+#   clawhub skill publish "$PWD" --slug open-ga4 --name "Open GA4" \
+#     --version 0.1.0 --dry-run --json
+# and read fileCount. --dry-run publishes nothing.
+
+# Dependencies and version control. Named explicitly rather than assumed:
+# .github/workflows/release.yml publishes after `npm ci`, so node_modules is
+# present in the directory being published, and whether the publisher happens
+# to skip it is not something this repository controls or tests.
+node_modules/
+.git/
+package-lock.json
+
+# Build and test configuration. The skill runs from lib/, which is committed;
+# nothing in the installed folder compiles or runs a test suite.
+tsconfig.json
+tsconfig.check.json
+vitest.config.ts
+scripts/
+
+# Repository automation and local working state. CI, Dependabot and the
+# release workflow describe how this repository is maintained, not what the
+# skill does. .superpowers/ and .sandbox/ are working directories.
+.github/
+.superpowers/
+.sandbox/
