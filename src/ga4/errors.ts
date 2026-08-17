@@ -60,6 +60,43 @@ function detailsOf(body: unknown): { info?: ErrorInfo; help?: Help; status?: str
   return { info, help, status: envelope.error?.status };
 }
 
+/**
+ * A `google.rpc.Help` link, if it is one, and the fallback otherwise.
+ *
+ * The link comes out of Google's error *body*, and it is printed into fix text
+ * as the next thing to do. Nothing in this skill fetches it, so this is not an
+ * egress control, and the body is only reachable from a host on the allowlist,
+ * so it is not attacker-controlled in any ordinary sense. It is still a URL that
+ * a person or an agent may follow because this skill told them to, arriving from
+ * a field this skill does not author, and "enable the API at <link>" is a
+ * sentence people act on without reading the host. Requiring https and a
+ * google.com host costs nothing and keeps the printed instruction pointing where
+ * the surrounding sentence says it does.
+ *
+ * The fallback is the console URL this code already knew, so a link that fails
+ * the check degrades to a correct one rather than to no link at all.
+ */
+function googleHelpLink(url: string | undefined, fallback: string): string {
+  if (!url) {
+    return fallback;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return fallback;
+  }
+  if (parsed.protocol !== "https:") {
+    return fallback;
+  }
+  const host = parsed.hostname.toLowerCase();
+  // A suffix match has to include the dot, or "notgoogle.com" passes.
+  if (host !== "google.com" && !host.endsWith(".google.com")) {
+    return fallback;
+  }
+  return parsed.href;
+}
+
 const SKEW_TOLERANCE_MS = 60_000;
 
 export type DiagnoseContext = {
@@ -128,8 +165,10 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
   if (error.status === 403 && info?.reason === "SERVICE_DISABLED") {
     const service = info.metadata?.service ?? "analyticsdata.googleapis.com";
     const project = info.metadata?.consumer?.replace(/^projects\//, "") ?? "your Google Cloud project";
-    const link =
-      help?.links?.[0]?.url ?? `https://console.cloud.google.com/apis/api/${service}/overview`;
+    const link = googleHelpLink(
+      help?.links?.[0]?.url,
+      `https://console.cloud.google.com/apis/api/${service}/overview`,
+    );
 
     if (service === "analyticsadmin.googleapis.com") {
       return new Ga4Error(

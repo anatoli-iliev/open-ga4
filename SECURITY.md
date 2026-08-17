@@ -217,9 +217,19 @@ Nothing else, ever. Adding a host is a visible, reviewable diff in one constant.
 One test asserts the refusal happens **before** `fetch` is called at all, not after.
 The allowlist is checked once, so `guardedFetch` passes `redirect: "error"`: a 302 from
 an allowed host is a failure rather than a request to a host that was never checked.
-Separately, `src/privacy/surface.test.ts` scans every `.js` file in `lib/` for
-`https://` hosts and fails on any host that is neither contacted nor an explicitly
-listed console link shown to a human.
+What is fetched is the `URL` object the allowlist was applied to, not the string that
+was handed in, so the checked thing and the fetched thing cannot come apart if a future
+parser, or an injected `fetch`, parses differently. Separately,
+`src/privacy/surface.test.ts` scans every `.js` file in `lib/` for `https://` hosts and
+fails on any host that is neither contacted nor an explicitly listed console link shown
+to a human.
+
+One URL in a message is not authored here: the `google.rpc.Help` link in Google's error
+body, printed into fix text as "enable the API at ...". Nothing fetches it, and it can
+only arrive from a host on the allowlist above, so this is not an egress control. It is
+still a link somebody may follow because this skill told them to, so it has to be https
+on a `google.com` host or the console URL the code already knows is used instead. A
+rejected link degrades to a correct one, never to no link.
 
 **What it does not do.** The skill uses the `fetch` it is given. If OpenClaw is
 configured with an HTTP proxy, or your machine has a TLS-intercepting middlebox, this
