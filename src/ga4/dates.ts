@@ -49,8 +49,11 @@ export class DateRangeError extends Ga4Error {
     super(
       "INVALID_REQUEST",
       message,
-      "This was read on this machine, before any request reached Google. Give a range in one of " +
-        "the forms named above and try again.",
+      // Names the accepted forms rather than pointing "above" at them: this
+      // one fix line is printed after either message, and the second one
+      // ("starts after it ends") lists nothing for "above" to refer to.
+      "This was read on this machine, before any request reached Google. Correct the range and " +
+        'try again: --range "last 28 days" and --range 2026-01-01..2026-01-31 are both accepted.',
     );
     this.name = "DateRangeError";
   }

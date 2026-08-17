@@ -164,6 +164,21 @@ describe("parseDateRange: rejections", () => {
     expect(() => parseDateRange("2026-02-01..2026-01-01", TODAY)).toThrow(/starts after it ends/);
   });
 
+  it("gives a fix that stands on its own after either message", () => {
+    // One fix line is printed after both messages, so it cannot point "above"
+    // at a list of accepted forms: the backwards-range message names none.
+    for (const input of ["sometime last spring", "2026-02-01..2026-01-01"]) {
+      let caught: Ga4Error | undefined;
+      try {
+        parseDateRange(input, TODAY);
+      } catch (error) {
+        caught = error as Ga4Error;
+      }
+      expect(caught?.fix).toContain("last 28 days");
+      expect(caught?.fix).not.toMatch(/above/);
+    }
+  });
+
   it("treats an unreadable value in resolveToDate the same way", () => {
     // precedingRange resolves both ends through this, so a bad stored range
     // reaches it as well as a bad typed one.
