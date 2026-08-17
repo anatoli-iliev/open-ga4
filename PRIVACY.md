@@ -89,8 +89,9 @@ The other three commands do not render reports and do not go through `format.ts`
 so their output is not redacted. `fields` returns GA4 field names and Google's own
 descriptions of them; `properties` and `doctor` return the property ids, property
 names and account names the credential can reach, plus one active-user count. All
-three escape `|` and collapse newlines in their table cells, as report rows do, but
-nothing in any of them is matched against the patterns below.
+three take `|` out of their table cells and collapse newlines, using the same
+`tableCell` function report rows go through, but nothing in any of them is matched
+against the patterns below.
 
 | Masked | Recognised as | Replaced with |
 | --- | --- | --- |
@@ -149,10 +150,36 @@ by default: `userId`, `signedInWithUserId`, and any dimension whose name begins
 `customUser:`, the prefix GA4 gives user-scoped custom dimensions, so one created on
 your property after this skill shipped is blocked too, with no skill update.
 
+**Blocked wherever the name appears, not only in the output columns.** A dimension name
+reaches a request through three channels: the column list (`--dimensions`), a filter
+field (`query --filter userId:exact:...`), and a sort key (`--sort userId`). All three go
+through the same check. This is worth stating because only the first is obvious, and the
+other two are the dangerous ones: a filter is what selects *which* rows a report
+describes, and the filter field never appears as a column, so a report filtered to one
+person comes back as ordinary page paths and dates with nothing in it to redact. That
+was a real hole in this skill, closed in `buildFilters` and `buildOrderBys`
+(`src/ga4/filters.ts`) rather than at their call site, so a future caller inherits the
+check instead of having to remember it. The refusal says so in as many words: filtering
+on a person-identifying dimension is a request for person-level data even when that
+dimension is not among the columns. Tests in `src/tools/reports.test.ts` pin all three
+channels, including the two sharpest shapes of the bypass (an existence check for one
+id, and a `begins_with` walk that enumerates ids a character at a time).
+
 `src/runtime.ts` also reads the property's live metadata and hands `classifyDimension`
-the custom definitions it finds there. That set is filtered to the same `customUser:`
-prefix, so today it confirms the prefix rule rather than extending it; the outcome
-above comes from the prefix, not from the metadata call.
+the names *that* property treats as person-identifying, which is more than the rules
+above can know:
+
+- Its user-scoped custom definitions. These all carry the `customUser:` prefix, so here
+  the metadata confirms the prefix rule rather than extending it.
+- Every **deprecated alias** of anything the rules block. `getMetadata` returns
+  `deprecatedApiNames` alongside `apiName`, and Google still accepts the old spellings,
+  so a name-based check that ignores that field is complete only by luck. Both
+  directions are covered: an old alias of `userId`, and a *new* name whose deprecated
+  alias is `userId`, which is the same column under a name the rules have never heard
+  of. A dimension's names stand or fall together.
+
+If the metadata call fails, the rules above still apply: they are the gate, and this
+sharpens it. What is lost is the property-specific extra.
 
 The refusal names the exact setting that lifts it, the `GA4_ALLOW_USER_DIMENSIONS`
 environment variable, and suggests `totalUsers` or `activeUsers`, which answer "how
@@ -176,8 +203,14 @@ in `src/privacy/policy.test.ts` pins the choice: *"permits free-text dimensions,
 are redacted rather than blocked"*.
 
 Those same values are visitor-authored (anyone can put a string in your `pagePath` by
-visiting a URL), so report rows are rendered inside a fenced block introduced as
-untrusted data rather than interpolated into prose. That fenced, labelled block is
+visiting a URL, and anyone holding your measurement id, which sits in the tag on your
+own site, can send an arbitrary `eventName` straight to Google's collect endpoint), so
+report rows are rendered inside a fenced block introduced as untrusted data rather than
+interpolated into prose. Which dimensions this applies to is not a list anybody can
+finish, so nothing is built on one: redaction runs on every value of every dimension
+column and the untrusted framing is attached to every row, whatever the dimension is
+called. `policy.ts`'s free-text list records the ones that are known, for documentation
+and for the `fields` listing, and says in as many words that it is not exhaustive. That fenced, labelled block is
 the whole of it. An earlier version of this project was an OpenClaw plugin and also
 marked every result with `resultContentSource: "network"`, the host's marker for
 externally controlled content; that field is only reachable through the plugin
@@ -213,13 +246,25 @@ contains `writeFile`, `appendFile`, `createWriteStream` or `mkdir`.
 **The audit log is the one exception, and it is off by default.** Set the
 `GA4_AUDIT_LOG` environment variable to a path and the skill appends one JSON line per
 report the agent runs (`report`, `compare`, `live` and `query`), recording the time,
-the property id, the command, the dimensions and metrics asked for, the date range,
-and how many rows came back. It records no response bodies, no row values and no
+the property id, the command, the dimensions and metrics asked for, the **field names**
+any filter narrowed the report to and any sort ordered it by, the date range, and how
+many rows came back. It records no response bodies, no row values and no
 totals: a count of rows, never the rows. The log's `tool` field holds the command name
 exactly as it is typed, so a line reads back as the thing that was run. `fields`,
 `properties` and `doctor` are not logged. The log covers the reports the agent asked
 for, not setup and discovery, and `doctor` does run one live `activeUsers` query as its
 Data API check, so if you need a record of every Data API call this file is not it.
+
+**It records filter field names and never filter values, deliberately.** A filter is
+what selects which rows a report is about, and the field it selects on is not one of
+the columns that comes back, so a line naming only the columns cannot tell a whole-site
+page report apart from the same report narrowed to one named person. The field name is
+what makes that visible. The value is not recorded, because the value is the person: it
+is the customer id, the email, or the URL with a token in it, and writing it here would
+put exactly the data this skill keeps off disk into the file you enabled in order to
+feel safer. So a line says a report was filtered on `userId`, and never to which
+`userId`. `src/privacy/audit.test.ts` asserts the whole key set of a written line, so a
+value cannot be added to it quietly.
 
 It exists so you can answer "what did the agent look at last Tuesday" without keeping
 the data itself. If the file cannot be written the skill warns and continues, because

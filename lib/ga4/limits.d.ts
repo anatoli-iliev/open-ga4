@@ -1,3 +1,4 @@
+import { type AccessPolicy } from "../privacy/policy.js";
 import { Ga4Error } from "./errors.js";
 /**
  * Request limits and the metric renames, enforced before a socket is opened.
@@ -69,4 +70,16 @@ export declare function assertWithinLimits(shape: ReportShape): void;
  */
 export declare const REALTIME_DIMENSIONS: ReadonlySet<string>;
 export declare const REALTIME_METRICS: ReadonlySet<string>;
-export declare function assertRealtimeFields(dimensions: readonly string[], metrics: readonly string[]): void;
+/**
+ * Everything realtime refuses locally: fields it does not have, and fields it
+ * has but that this skill will not ask for by default.
+ *
+ * The policy check is here rather than at the call site for the reason
+ * buildFilters holds its own: the caller that skips it is the defect, and a
+ * required argument is what stops one being written. runRealtime was that
+ * caller. Nothing could exploit it, because `live` takes only a preset id and
+ * every realtime preset's dimensions are constants, but the check was missing
+ * from the one command that has a permissive `customUser:` rule of its own,
+ * which is the worst place for it to be missing from.
+ */
+export declare function assertRealtimeFields(dimensions: readonly string[], metrics: readonly string[], policy: AccessPolicy, propertyIdentifying?: ReadonlySet<string>): void;

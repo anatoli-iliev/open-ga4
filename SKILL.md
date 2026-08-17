@@ -441,7 +441,7 @@ For any of those, run a normal report over a recent range instead.
 | `--start` / `--end` | report, query | `YYYY-MM-DD` each, used together instead of `--range`. One without the other is an error, not half a range. Not available on compare. |
 | `--limit` | report, compare, live, query | Rows returned. Defaults: 25 for query, the preset's own row count capped at 100 for report, 10 for compare, 20 for live. Maximum 1000. |
 | `--filter` | report, query | **Two different things. See below.** |
-| `--sort` | query | A metric name to sort by, descending. Falls back to a dimension name. |
+| `--sort` | query | A metric name to sort by, descending. Falls back to a dimension name, which is checked against the privacy policy the same way `--dimensions` is. |
 | `--dimensions` / `--metrics` | query | Comma-separated GA4 API names. `--metrics` is required. |
 | `--kind` | fields | `any`, `dimension` or `metric`. |
 | `--json` | all | Structured output instead of the markdown table. See above for when. |
@@ -467,6 +467,14 @@ query --metrics screenPageViews --dimensions pagePath --filter pagePath:begins_w
 Operators: `contains`, `exact`, `begins_with`, `ends_with`, `regex`, `in_list`,
 `greater_than`, `less_than`. A metric field accepts only `greater_than` and
 `less_than`. An unknown operator is rejected before anything is sent.
+
+The field is checked against the same privacy policy as `--dimensions`, so
+`--filter userId:exact:...`, `--filter customUser:<anything>:...` and `--sort userId`
+are refused exactly as `--dimensions userId` is. Do not read that refusal as a reason to
+move the name from `--dimensions` into `--filter`: filtering on a person is a request for
+that person's data whatever the columns are called, and the refusal says so. If the user
+wants to know how many people rather than which, use the `activeUsers` or `totalUsers`
+metric. Only a person can lift the block, by setting `GA4_ALLOW_USER_DIMENSIONS`.
 
 **`report --filter <text>`** is a raw substring, case-insensitive, matched against the
 report's first dimension. There is no field, no operator, and no colon syntax:

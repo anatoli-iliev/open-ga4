@@ -19,7 +19,7 @@ type Recorded = { propertyId: string; request: RunReportRequest };
 
 /**
  * A Ga4Runtime that never touches disk or the network: `client()`, `metadata()`
- * and `userScopedCustomDimensions()` are all hand-written stubs, not the real
+ * and `userIdentifyingDimensions()` are all hand-written stubs, not the real
  * implementations in src/runtime.ts, so nothing here can reach a real
  * credential file or a real Google request no matter what is installed on the
  * machine running the test. Modeled on the stubRuntime helpers already in
@@ -60,7 +60,7 @@ function fakeRuntime(
     probes: () => [{ label: "GA4_CREDENTIALS", path: "env", status: "used" }],
     resolveProperty: (explicit) => normalizePropertyId(explicit ?? config.defaultPropertyId!),
     metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 
   return { runtime, calls };
@@ -104,7 +104,7 @@ function runtimeStuckOnNoPropertySelected(secondCall: AccountSummary[] | Error):
       return normalizePropertyId(explicit);
     },
     metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 }
 
@@ -139,7 +139,7 @@ function runtimeWithNoCredentials(): Ga4Runtime {
       );
     },
     metadata: async () => ({ dimensions: [], metrics: [] }),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set<string>(),
   };
 }
 
@@ -420,7 +420,7 @@ describe("client-side validation exits 2, not 1 or 4", () => {
   // them can reach runtime.client() regardless of what credentials the
   // machine running the test happens to have. The fourth needs a property to
   // resolve successfully to reach the check under test, which would then
-  // reach runtime.client() through userScopedCustomDimensions if driven
+  // reach runtime.client() through userIdentifyingDimensions if driven
   // through main()'s real runtime, so it uses dispatch() with fakeRuntime()
   // instead, exactly to avoid that.
   it("names an unknown preset on report and exits 2", async () => {
@@ -472,7 +472,7 @@ describe("client-side validation exits 2, not 1 or 4", () => {
  * runtime.client() is ever touched, so none can reach a credential or a
  * socket regardless of what is installed on the machine running the test.
  * The privacy refusal is the exception, because runQuery consults
- * userScopedCustomDimensions (which does call client()) before checking the
+ * userIdentifyingDimensions (which does call client()) before checking the
  * policy, so it goes through dispatch() with fakeRuntime() instead.
  */
 describe("a refusal made locally never reports itself as Google refusing", () => {
@@ -695,4 +695,52 @@ describe("every KNOWN_FLAGS entry reaches a real field", () => {
       }
     });
   }
+});
+
+/**
+ * "There is no path out of this process that skips redactText."
+ *
+ * That sentence is in a comment at the top of main(), and it was not true when
+ * it was written: the success path on stdout printed dispatch's result raw. It
+ * was not leaking anything, because what arrives there is rows that redaction
+ * already cleaned plus prose this skill wrote, and doctor's checks redact at
+ * construction instead. But an invariant that holds only because of what the
+ * callers happen to pass is not an invariant, and the next person to add a
+ * message on that path had no way to know it was the one write without a net.
+ *
+ * Checked structurally, against the source, for the reason src/privacy/surface.test.ts
+ * checks the built bundle rather than intentions: a claim about every path is
+ * not something a reader can keep verifying by eye, and the failure mode is a
+ * path that gets added later.
+ */
+describe("every write to a stream in main()", () => {
+  /**
+   * The two writes whose entire content is a constant defined in this file:
+   * the usage text and the version string. Nothing outside the file reaches
+   * either, so there is nothing in them to redact. Named individually, so a
+   * third constant cannot join them without this list being edited.
+   */
+  const CONSTANT_WRITES = ["USAGE", "`${VERSION}\\n`"];
+
+  it("passes its text through redactText, or writes a constant from this file", () => {
+    const source = readFileSync("src/cli/main.ts", "utf8");
+    const writes = [...source.matchAll(/streams\.(?:out|err)\((.*)\);/g)].map((match) =>
+      match[1]!.trim(),
+    );
+
+    // The count is asserted so this cannot pass by matching nothing at all.
+    expect(writes.length).toBe(7);
+    const unprotected = writes.filter(
+      (argument) => !argument.includes("redactText(") && !CONSTANT_WRITES.includes(argument),
+    );
+    expect(unprotected).toEqual([]);
+  });
+
+  it("redacts the success path on stdout, not only the error paths", () => {
+    const source = readFileSync("src/cli/main.ts", "utf8");
+    // The one write that follows a successful dispatch. Pinned separately from
+    // the sweep above because this is the write that was missing, and a sweep
+    // over seven call sites would still pass if this one were the constant kind.
+    expect(source).toMatch(/streams\.out\(redactText\(result\./);
+  });
 });

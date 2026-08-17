@@ -1,3 +1,4 @@
+import type { FieldMetadata } from "../ga4/client.js";
 import { Ga4Error } from "../ga4/errors.js";
 
 /**
@@ -34,9 +35,29 @@ const USER_IDENTIFYING_PREFIXES = ["customUser:"];
  * by marketers. Not blocked (they are the useful ones), but they are why
  * redaction is on by default and why results are marked as untrusted network
  * content: a stranger can put text in any of them by visiting a URL.
+ *
+ * **This list is not exhaustive, and nothing depends on it being.** Read that
+ * before adding a check that assumes otherwise. Redaction runs on every value of
+ * every dimension column, and the untrusted-content framing is attached to every
+ * row of every report, both regardless of class (see src/ga4/format.ts), so a
+ * dimension missing from here is protected exactly as much as one listed. What
+ * the class is for is documentation and the `fields` listing: it records which
+ * dimensions are *known* to carry text a stranger wrote, so nobody has to
+ * rediscover it.
+ *
+ * Enumerating the full set is not achievable. `eventName` is the plain example
+ * and is listed below: the GA4 `collect` endpoint accepts an arbitrary event
+ * name from anyone holding the measurement id, which is public by construction,
+ * sitting in the tag on the site. Every event parameter that becomes a
+ * dimension has the same property. A list that claimed completeness would be
+ * making a promise about Google's ingestion surface that this repository is in
+ * no position to keep.
  */
 const FREE_TEXT_PREFIXES = ["customEvent:", "customItem:", "sessionCustomChannelGroup:"];
 const FREE_TEXT_EXACT = new Set([
+  // Injectable through the collect endpoint with nothing but the public
+  // measurement id, no visit to the site required.
+  "eventName",
   "pagePath",
   "pagePathPlusQueryString",
   "pageLocation",
@@ -84,19 +105,23 @@ export const THRESHOLD_PRONE_DIMENSIONS: readonly string[] = [
 export type DimensionClass = "user-identifying" | "free-text" | "ordinary";
 
 /**
- * @param userScopedCustom Dimension names the property reports as user-scoped
- *   custom definitions. Supplying these from a live `getMetadata` response
- *   means custom dimensions added to a property *after* this skill shipped are
- *   still classified correctly, with no skill update.
+ * @param propertyIdentifying Names this property, specifically, treats as
+ *   person-identifying, from `userIdentifyingDimensionNames` below: its
+ *   user-scoped custom definitions, and every deprecated alias of anything the
+ *   static rules block. Supplying these from a live `getMetadata` response means
+ *   a custom dimension created on a property *after* this skill shipped, or an
+ *   old spelling Google still accepts, is classified correctly with no skill
+ *   update. Empty is a valid argument: the static rules above are the gate, and
+ *   this sharpens them.
  */
 export function classifyDimension(
   name: string,
-  userScopedCustom: ReadonlySet<string> = new Set(),
+  propertyIdentifying: ReadonlySet<string> = new Set(),
 ): DimensionClass {
   if (
     USER_IDENTIFYING_EXACT.has(name) ||
     USER_IDENTIFYING_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
-    userScopedCustom.has(name)
+    propertyIdentifying.has(name)
   ) {
     return "user-identifying";
   }
@@ -104,6 +129,48 @@ export function classifyDimension(
     return "free-text";
   }
   return "ordinary";
+}
+
+/**
+ * Every name this property will answer to for a dimension the rules above call
+ * person-identifying, deprecated aliases included.
+ *
+ * The rules above match on a name, and a GA4 property answers to more than one
+ * name per dimension: `getMetadata` returns `deprecatedApiNames` alongside
+ * `apiName`, and the API still accepts the old spellings. That field was parsed
+ * and never consulted, which left the check name-complete only by luck. Two ways
+ * for a name to slip past, and this closes both by treating a dimension's names
+ * as one group that stands or falls together:
+ *
+ * - An alias for a blocked dimension. Metadata says `apiName: "userId"` with a
+ *   deprecated `"uid"`; `--dimensions uid` classified as ordinary and Google
+ *   accepted it.
+ * - A rename *of* a blocked dimension. Metadata says `apiName: "personId"` with
+ *   a deprecated `"userId"`; the new name is unknown to the rules, and it is the
+ *   same dimension.
+ *
+ * Fed to `classifyDimension` as its `propertyIdentifying` argument, which is why
+ * that parameter is a set of names rather than a predicate: it already existed
+ * for live custom definitions, and this is more of the same thing, names this
+ * property treats as person-identifying that a shipped list cannot know.
+ */
+export function userIdentifyingDimensionNames(
+  dimensions: readonly FieldMetadata[],
+): Set<string> {
+  const blocked = new Set<string>();
+  for (const dimension of dimensions) {
+    const names = [dimension.apiName, ...(dimension.deprecatedApiNames ?? [])].filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    );
+    // Any one of a dimension's names being blocked blocks all of them: they name
+    // the same column, so the safe answer is the same for each.
+    if (names.some((name) => classifyDimension(name) === "user-identifying")) {
+      for (const name of names) {
+        blocked.add(name);
+      }
+    }
+  }
+  return blocked;
 }
 
 /** Dimensions in this request that make Google's thresholding likely. */
@@ -164,32 +231,86 @@ export class PolicyError extends Ga4Error {
   }
 }
 
-/** Refuse a query that asks for person-level dimensions, naming the opt-in. */
+/**
+ * Which channel carried a dimension name into the request.
+ *
+ * It changes nothing about the decision and everything about the explanation.
+ * A name used only as a filter field or a sort key never appears as a column,
+ * so a refusal that says no more than "this dimension identifies people" leaves
+ * the reader with an obvious and wrong next move: drop it from the output
+ * columns and ask again. That is exactly the request being refused. Filtering a
+ * report down to one person's rows is a request for that person's data whatever
+ * the columns are called, and the message has to say so, because it is the part
+ * that is not self-evident.
+ */
+export type DimensionUse = "columns" | "filter" | "sort";
+
+/** The sentence that explains why a name off the column list still counts. */
+function whyItStillCounts(use: DimensionUse, names: string, one: boolean): string {
+  const it = one ? "it" : "them";
+  const isAre = one ? "is" : "are";
+  switch (use) {
+    case "filter":
+      return (
+        `Filtering on ${names} asks for the rows belonging to particular people, so the numbers ` +
+        `that come back describe those people even though ${names} ${isAre} not among the columns ` +
+        `the report returns. Leaving ${it} out of the dimension list does not make this an ` +
+        `aggregate question, and a filter value is itself personal data, so it is refused here too. `
+      );
+    case "sort":
+      return (
+        `Sorting by ${names} orders the report by which person each row belongs to, so it asks ` +
+        `for person-level data even though ${names} ${isAre} not among the columns the report ` +
+        `returns. `
+      );
+    case "columns":
+      return "";
+  }
+}
+
+/**
+ * Refuse a query that asks for person-level dimensions, naming the opt-in.
+ *
+ * Called on every channel a dimension name can travel through, not only the
+ * output column list: see `buildFilters` and `buildOrderBys` in
+ * src/ga4/filters.ts. A gate on the column list alone was bypassable, and in
+ * the worst way, because the refusal it left in place made the skill look like
+ * it was enforcing something it was not.
+ */
 export function assertDimensionsAllowed(
   dimensions: readonly string[],
   policy: AccessPolicy,
-  userScopedCustom: ReadonlySet<string> = new Set(),
+  propertyIdentifying: ReadonlySet<string> = new Set(),
+  use: DimensionUse = "columns",
 ): void {
   if (policy.allowUserIdentifyingDimensions) {
     return;
   }
   const blocked = dimensions.filter(
-    (name) => classifyDimension(name, userScopedCustom) === "user-identifying",
+    (name) => classifyDimension(name, propertyIdentifying) === "user-identifying",
   );
   if (blocked.length === 0) {
     return;
   }
+  const one = blocked.length === 1;
+  const it = one ? "it" : "them";
+  const names = blocked.join(", ");
   throw new PolicyError(
-    `${blocked.join(", ")} ${blocked.length === 1 ? "identifies" : "identify"} individual people, ` +
-      `so this skill does not request ${blocked.length === 1 ? "it" : "them"} by default. ` +
-      `To allow ${blocked.length === 1 ? "it" : "them"}, set the environment variable ` +
+    `${names} ${one ? "identifies" : "identify"} individual people, ` +
+      `so this skill does not request ${it} by default. ` +
+      whyItStillCounts(use, names, one) +
+      `To allow ${it}, set the environment variable ` +
       `GA4_ALLOW_USER_DIMENSIONS to true. ` +
       `For counts of people, use the totalUsers or activeUsers metric instead; ` +
       `it answers "how many" without naming anyone.`,
     {
       fix:
-        "This skill refused the question on this machine; Google was never asked. Ask for the " +
-        "same numbers without that dimension, or have a person set the variable named above.",
+        use === "columns"
+          ? "This skill refused the question on this machine; Google was never asked. Ask for the " +
+            "same numbers without that dimension, or have a person set the variable named above."
+          : "This skill refused the question on this machine; Google was never asked. Ask the same " +
+            "question without narrowing it to a person (a whole-site or per-page total, or the " +
+            "activeUsers metric for how many), or have a person set the variable named above.",
     },
   );
 }

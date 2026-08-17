@@ -269,3 +269,67 @@ describe("one code per state", () => {
 // than existing in two halves. Nothing about it is specific to the error
 // taxonomy; it landed here because an error message was where the string was
 // first found.
+
+/**
+ * The `google.rpc.Help` link is the one URL in a message that this skill does
+ * not author: it comes out of Google's error body and is printed as the next
+ * thing to do.
+ *
+ * Nothing fetches it, and the body can only arrive from a host on the egress
+ * allowlist, so this is not an egress control and there is no attack to close.
+ * It is a link a person or an agent may follow because this skill told them to,
+ * and "enable the API at <link>" is a sentence people act on without reading the
+ * host. Anything that is not an https google.com URL falls back to the console
+ * URL this code already knows, so a rejected link degrades to a correct one
+ * rather than to none.
+ */
+describe("the fix link taken from Google's error body", () => {
+  /** A SERVICE_DISABLED body whose Help link is whatever is passed in. */
+  function withHelpLink(url: unknown) {
+    return {
+      error: {
+        code: 403,
+        status: "PERMISSION_DENIED",
+        details: [
+          {
+            "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            reason: "SERVICE_DISABLED",
+            metadata: { service: "analyticsdata.googleapis.com", consumer: "projects/482910" },
+          },
+          { "@type": "type.googleapis.com/google.rpc.Help", links: [{ url }] },
+        ],
+      },
+    };
+  }
+
+  const CONSOLE_FALLBACK =
+    "console.cloud.google.com/apis/api/analyticsdata.googleapis.com/overview";
+
+  it("uses Google's own link when it is an https google.com URL", () => {
+    const error = diagnose(
+      googleError(403, withHelpLink("https://console.developers.google.com/apis/api/x")),
+      { now },
+    );
+    expect(error.fix).toContain("https://console.developers.google.com/apis/api/x");
+  });
+
+  it.each([
+    ["a non-Google host", "https://evil.example.com/enable"],
+    ["a host that merely ends in the right letters", "https://notgoogle.com/enable"],
+    ["a subdomain trick", "https://google.com.evil.example/enable"],
+    ["plain http", "http://console.cloud.google.com/enable"],
+    ["a javascript: URL", "javascript:alert(1)"],
+    ["a file: URL", "file:///etc/passwd"],
+    ["a data: URL", "data:text/html,<script>0</script>"],
+    ["something that is no URL at all", "enable it somewhere"],
+  ])("falls back to the console URL for %s", (_label, url) => {
+    const error = diagnose(googleError(403, withHelpLink(url)), { now });
+    expect(error.fix).toContain(CONSOLE_FALLBACK);
+    expect(error.fix).not.toContain(url);
+  });
+
+  it("falls back when the Help detail carries no url at all", () => {
+    const error = diagnose(googleError(403, withHelpLink(undefined)), { now });
+    expect(error.fix).toContain(CONSOLE_FALLBACK);
+  });
+});

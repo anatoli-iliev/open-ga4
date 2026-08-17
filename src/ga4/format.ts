@@ -41,7 +41,8 @@ export type FormattedReport = {
    * already happened before this is built: this is not a second, separate
    * path back to a raw cell. Newlines are flattened for the same reason the
    * markdown table's cells are (see flattenNewlines below), which happens
-   * upstream of both, in `body`, so the two cannot drift apart.
+   * upstream of both, in `body` and `headers`, so the two cannot drift apart.
+   * Every cell and every key, dimensions, metrics and headers alike.
    */
   rows: Array<Record<string, string>>;
   /**
@@ -121,9 +122,15 @@ function formatDuration(seconds: number): string {
  * of whether the surrounding document is markdown or JSON. JSON's own
  * escaping keeps the document structurally valid either way; it does not by
  * itself stop injected text from reading as its own line once a model
- * attends to it. Applied once, upstream in `body` below, so both channels
- * share this single pass rather than each doing (or forgetting to do) their
- * own.
+ * attends to it. Applied once, upstream in `body` and `headers` below, so both
+ * channels share this single pass rather than each doing (or forgetting to do)
+ * their own. Every cell, not only the dimension ones: a metric cell is a
+ * number in practice, but formatMetric returns its input verbatim when
+ * Number(raw) is not finite, and a header is our own request echoed back, so
+ * both were relying on an expectation about the response rather than on this
+ * function. tableCell below flattens again on the markdown side, which is
+ * belt and braces rather than the same thing twice: this pass is what the JSON
+ * `rows` field gets.
  *
  * Exported for the one place a value reaches text *outside* the fenced block:
  * the caveat line saying what a report was filtered to, which interpolates a
@@ -154,12 +161,50 @@ function fenceFor(content: string): string {
   return "`".repeat(Math.max(3, longest + 1));
 }
 
+/**
+ * U+FF5C FULLWIDTH VERTICAL LINE. Written as an escape so this file stays
+ * ASCII: it looks like `|` when read, and it is not the character a markdown
+ * table splits rows on.
+ */
+const NOT_A_DELIMITER = "\uFF5C";
+
+/**
+ * Make a string safe to place between two `|` delimiters, by removing every
+ * character that could act as one.
+ *
+ * Substitution, not escaping, and that is the whole point. The previous
+ * implementation escaped, `cell.replace(/\|/g, "\\|")`, and it was exactly
+ * backwards for a value that already contained a backslash: `\|` became `\\|`,
+ * which GFM reads as an escaped backslash followed by a **live** pipe. The
+ * escape converted an already-harmless pipe into a working delimiter. A visitor
+ * loading any page on the site with `?q=pricing\|999999` on the end gets that
+ * string into `searchTerm` verbatim; it matches no personal-data pattern, so
+ * redaction passes it through, and `report search_terms` then emitted a
+ * five-field row under four headers. `eventCount` read 999999 instead of 3,
+ * every later metric shifted one place, and an agent relayed a fabricated
+ * figure to a non-technical user as a measured number. Same reach through
+ * `pagePathPlusQueryString`, `landingPagePlusQueryString`, `pageTitle` and
+ * `?utm_campaign=`.
+ *
+ * Escaping correctly (backslash first, then pipe) would also work, but it keeps
+ * the value's ability to forge structure one ordering mistake away. Removing
+ * the delimiter from the value means no escape sequence is involved at all,
+ * which is the property worth having on a channel a model reads: there is
+ * nothing left to get wrong. The cost is that a literal `|` in a value reads as
+ * a fullwidth one, which is visible, honest, and cannot shift a number.
+ *
+ * Newlines go too, for the reason flattenNewlines exists: a bare newline starts
+ * a line that reads as a fresh `| ... |` row.
+ */
+export function tableCell(value: string): string {
+  return flattenNewlines(value).replace(/\|/g, NOT_A_DELIMITER);
+}
+
 function markdownTable(headers: string[], rows: string[][]): string {
-  const escape = (cell: string): string => cell.replace(/\|/g, "\\|");
   const lines = [
-    `| ${headers.map(escape).join(" | ")} |`,
+    `| ${headers.map(tableCell).join(" | ")} |`,
     `| ${headers.map(() => "---").join(" | ")} |`,
-    ...rows.map((row) => `| ${row.map(escape).join(" | ")} |`),
+    ...rows.map((row) => `| ${row.map(tableCell).join(" | ")} |`),
   ];
   return lines.join("\n");
 }
@@ -265,13 +310,30 @@ export function formatReport(
       // drift apart the way one of them forgetting to flatten would.
       return flattenNewlines(result.value);
     });
+    // Flattened as well, though a metric is a number. formatMetric returns its
+    // input verbatim when Number(raw) is not finite, so "a metric cell is
+    // numeric" is an assumption about Google's response rather than something
+    // this code enforces, and the comment on flattenNewlines above says every
+    // cell on both channels is flattened. Making that true costs one call; a
+    // metric that is already a number is unchanged by it. The markdown table
+    // flattens again via tableCell, which is why this line is about the JSON
+    // `rows` field: that is the channel this one pass covers.
     const metricCells = (row.metricValues ?? []).map((cell, index) =>
-      formatMetric(cell.value, metricHeaders[index]?.type, metricHeaders[index]?.name ?? "", currency),
+      flattenNewlines(
+        formatMetric(cell.value, metricHeaders[index]?.type, metricHeaders[index]?.name ?? "", currency),
+      ),
     );
     return [...dimensionCells, ...metricCells];
   });
 
-  const headers = [...dimensionHeaders, ...metricHeaders.map((header) => header.name ?? "")];
+  // Headers too, for the same reason: they are an echo of the field names this
+  // skill asked for, so nothing untrusted is expected in them, but they are
+  // keys in the JSON `rows` objects and cells in the markdown table, and "every
+  // cell is flattened" should not have an exception that rests on an
+  // expectation about a response.
+  const headers = [...dimensionHeaders, ...metricHeaders.map((header) => header.name ?? "")].map(
+    flattenNewlines,
+  );
 
   const caveats = [...(options.notes ?? []), ...caveatsFor(response.metadata, hasCurrencyMetric)];
   if (!options.redaction.enabled) {

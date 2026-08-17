@@ -1,7 +1,8 @@
 import type { FieldMetadata } from "../ga4/client.js";
 import { diagnose, type Ga4Error } from "../ga4/errors.js";
+import { tableCell } from "../ga4/format.js";
 import { RENAMED_FIELDS } from "../ga4/limits.js";
-import { classifyDimension } from "../privacy/policy.js";
+import { classifyDimension, userIdentifyingDimensionNames } from "../privacy/policy.js";
 import { redactText } from "../privacy/redact.js";
 import type { Ga4Runtime } from "../runtime.js";
 
@@ -13,10 +14,24 @@ import type { Ga4Runtime } from "../runtime.js";
  * a custom dimension added last week shows up without a skill update.
  */
 
-/** Table cells must not be able to forge table structure. */
-function cell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
-}
+/**
+ * Table cells must not be able to forge table structure.
+ *
+ * The same function report rows use, imported rather than reimplemented. There
+ * were two copies of this and both had the same defect: escaping `|` as `\|`
+ * turns a value's existing `\|` into `\\|`, which markdown reads as an escaped
+ * backslash followed by a live delimiter, so the escape created the very split
+ * it was meant to prevent. One copy also means these tables cannot drift from
+ * the report tables again, and it is worth more here than there: the tables
+ * below are not inside a fenced block and carry no untrusted-data framing, so a
+ * forged column is all the harder to notice.
+ *
+ * Field names and descriptions come from Google's own metadata rather than from
+ * a site visitor, which lowers the odds but not the requirement: a custom
+ * dimension's name and description are typed by whoever administers the
+ * property, and this is the one place they are rendered as structure.
+ */
+const cell = tableCell;
 
 /**
  * A failed check, with redactText applied once, here, at the point the text is
@@ -90,6 +105,15 @@ export async function runFields(
     .sort((a, b) => b.score - a.score || (a.field.apiName ?? "").localeCompare(b.field.apiName ?? ""))
     .slice(0, limit);
 
+  // The same property-specific names the report commands classify against, from
+  // metadata that is already in hand, so no extra request. Without this the
+  // "blocked by default" flag below would be computed from the static rules
+  // alone while `query` refuses on the static rules *plus* these, and `fields`
+  // would describe a field as available that `query` then refuses. A discovery
+  // command that disagrees with the command it exists to help you write is worse
+  // than one that says nothing.
+  const propertyIdentifying = userIdentifyingDimensionNames(metadata.dimensions ?? []);
+
   const rename = RENAMED_FIELDS[params.query.trim()];
 
   const lines = [
@@ -115,7 +139,10 @@ export async function runFields(
         if (entry.field.customDefinition) {
           flags.push("custom");
         }
-        if (entry.kind === "dimension" && classifyDimension(api) === "user-identifying") {
+        if (
+          entry.kind === "dimension" &&
+          classifyDimension(api, propertyIdentifying) === "user-identifying"
+        ) {
           flags.push("blocked by default");
         }
         const kindCell = flags.length > 0 ? `${entry.kind} (${flags.join(", ")})` : entry.kind;

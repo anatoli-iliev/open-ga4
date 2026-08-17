@@ -155,9 +155,13 @@ for SEO reasons. An agent that reads those values turns it into a prompt-injecti
 
 What separates visitor-authored text from trusted output here is the framing of the output
 itself. Report rows are rendered inside a fenced block introduced as data supplied by site
-visitors, rather than interpolated into prose. Every table cell of every command has `|`
-escaped and newlines collapsed, so a value cannot forge table structure or start a line of
-its own. `fields`, `properties` and `doctor` list field, property and account names in a
+visitors, rather than interpolated into prose. In every table cell of every command, a `|`
+is **replaced** with a fullwidth one that cannot delimit, and newlines are collapsed, so a
+value cannot forge table structure or start a line of its own. Replacement rather than
+escaping, because escaping `|` as `\|` turns a value's existing `\|` into `\\|`, which
+markdown reads as an escaped backslash followed by a live delimiter: the escape creates the
+split it exists to prevent. Taking the character out leaves no escape sequence to get
+wrong. `fields`, `properties` and `doctor` list field, property and account names in a
 plain table without that fence, because those names come from Google and from your own
 Analytics configuration rather than from visitors.
 

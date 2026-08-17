@@ -170,3 +170,31 @@ describe("redirects", () => {
     expect((fetchImpl.mock.calls[0]![1] as RequestInit).redirect).toBe("error");
   });
 });
+
+/**
+ * What gets checked and what gets fetched must be the same object.
+ *
+ * assertAllowedUrl returns the URL it parsed and validated, and that return
+ * value used to be discarded: the original string was handed to fetchImpl
+ * instead. There was no gap, because both sides went through the same WHATWG
+ * parser. The shape is still wrong, and this is the one place it could matter,
+ * either through a platform parser change or through an injected FetchLike whose
+ * own parsing differs from the one the allowlist was applied to. Passing the
+ * parsed href means the question cannot arise.
+ */
+describe("the URL that is actually fetched", () => {
+  it("is the parsed, validated one rather than the string handed in", async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+    // An origin with no path: the parser normalises it to a trailing slash, so
+    // the fetched string differs from the input and shows which one was used.
+    await guardedFetch("https://analyticsdata.googleapis.com", { fetchImpl });
+    expect(fetchImpl.mock.calls[0]![0]).toBe("https://analyticsdata.googleapis.com/");
+  });
+
+  it("matches what assertAllowedUrl returned, exactly", async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+    const url = "https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport";
+    await guardedFetch(url, { fetchImpl });
+    expect(fetchImpl.mock.calls[0]![0]).toBe(assertAllowedUrl(url).href);
+  });
+});

@@ -1,10 +1,14 @@
 import { resolveCredentials, type CredentialProbe } from "./auth/credentials.js";
 import { createTokenProvider } from "./auth/token.js";
-import { createGa4Client, type FieldMetadata, type Ga4Client, type MetadataResponse } from "./ga4/client.js";
+import { createGa4Client, type Ga4Client, type MetadataResponse } from "./ga4/client.js";
 import { Ga4Error } from "./ga4/errors.js";
 import type { FetchLike } from "./ga4/http.js";
 import { createAuditLogger, NULL_AUDIT_LOGGER, type AuditLogger } from "./privacy/audit.js";
-import { assertPropertyAllowed, normalizePropertyId } from "./privacy/policy.js";
+import {
+  assertPropertyAllowed,
+  normalizePropertyId,
+  userIdentifyingDimensionNames,
+} from "./privacy/policy.js";
 import type { ResolvedConfig } from "./config.js";
 
 /**
@@ -25,8 +29,12 @@ export type Ga4Runtime = {
   probes(): CredentialProbe[];
   resolveProperty(explicit?: string): string;
   metadata(propertyId: string, signal?: AbortSignal): Promise<MetadataResponse>;
-  /** Dimension names this property reports as user-scoped custom definitions. */
-  userScopedCustomDimensions(propertyId: string, signal?: AbortSignal): Promise<Set<string>>;
+  /**
+   * Dimension names this property, specifically, treats as person-identifying:
+   * its user-scoped custom definitions and every deprecated alias of anything
+   * the policy blocks. Names a shipped list cannot know.
+   */
+  userIdentifyingDimensions(propertyId: string, signal?: AbortSignal): Promise<Set<string>>;
 };
 
 export type RuntimeOptions = {
@@ -129,18 +137,17 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
       return cached;
     },
 
-    async userScopedCustomDimensions(propertyId: string, signal?: AbortSignal): Promise<Set<string>> {
+    async userIdentifyingDimensions(propertyId: string, signal?: AbortSignal): Promise<Set<string>> {
       try {
         const meta = await this.metadata(propertyId, signal);
-        return new Set(
-          (meta.dimensions ?? [])
-            .filter((dimension: FieldMetadata) => dimension.customDefinition === true)
-            .filter((dimension) => (dimension.apiName ?? "").startsWith("customUser:"))
-            .map((dimension) => dimension.apiName ?? ""),
-        );
+        // The classification itself lives in policy.ts, with the rules it has to
+        // agree with. This method's job is only to fetch what it reads.
+        return userIdentifyingDimensionNames(meta.dimensions ?? []);
       } catch {
-        // Metadata is an optimisation for classification, not a gate. The
-        // hardcoded rules in policy.ts still apply if this call fails.
+        // Metadata sharpens classification; it is not the gate. The rules in
+        // policy.ts still apply if this call fails, and they are what blocks
+        // userId and the customUser: prefix. What is lost on a failure is the
+        // property-specific extra: a deprecated alias of a blocked dimension.
         return new Set();
       }
     },

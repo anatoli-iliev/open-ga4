@@ -52,8 +52,9 @@ export async function main(
     // redactText here too, not only on the paths below. A parse failure quotes
     // the argv token it could not read, and argv is the one place a person
     // pastes things: `--property <a key they had on the clipboard>` prints
-    // that value back out. redactText is unconditional by design, so there is
-    // no path out of this process that skips it.
+    // that value back out. redactText is unconditional by design: every one of
+    // the four writes in this function goes through it, the success path on
+    // stdout included, so there is no path out of this process that skips it.
     streams.err(`error: ${redactText(error instanceof Error ? error.message : String(error))}\n`);
     return EXIT.BAD_INPUT;
   }
@@ -86,7 +87,19 @@ export async function main(
   try {
     const result = await dispatch(runtime, parsed);
     flushWarnings();
-    streams.out(result.endsWith("\n") ? result : `${result}\n`);
+    // The success path too, which is what makes "no path out of this process
+    // skips redactText" above a statement about the code rather than about the
+    // error paths. It was not true when written: this line printed `result`
+    // raw. Nothing was leaking, because what reaches here is rows redaction
+    // already cleaned plus prose this skill wrote, and doctor's checks redact
+    // at construction. But an invariant that holds by coincidence of what the
+    // callers happen to pass is not an invariant, and the next writer of a
+    // message on this path would have had no way to know it was the one path
+    // without a net. redactText is idempotent (a second pass over
+    // "[redacted]" matches nothing), so the paths that already redact are
+    // unaffected, and it only ever removes a private key block, a secret JSON
+    // field or a bearer token, none of which belongs in a report.
+    streams.out(redactText(result.endsWith("\n") ? result : `${result}\n`));
     return EXIT.OK;
   } catch (error) {
     flushWarnings();

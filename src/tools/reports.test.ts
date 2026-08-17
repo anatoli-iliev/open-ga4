@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { configFromEnv } from "../config.js";
 import type { Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
-import { assertPropertyAllowed, normalizePropertyId } from "../privacy/policy.js";
+import { assertRealtimeFields } from "../ga4/limits.js";
+import { PRESETS } from "../ga4/presets.js";
+import type { AuditEntry } from "../privacy/audit.js";
+import {
+  DEFAULT_ACCESS_POLICY,
+  PolicyError,
+  assertPropertyAllowed,
+  normalizePropertyId,
+} from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
 import { runCompare, runQuery, runRealtime, runReport } from "./reports.js";
 
@@ -10,9 +18,16 @@ type Recorded = { propertyId: string; request: RunReportRequest };
 function stubRuntime(
   response: RunReportResponse = {},
   envOverrides: Parameters<typeof configFromEnv>[0] = {},
-): { runtime: Ga4Runtime; calls: Recorded[]; realtimeCalls: Recorded[] } {
+  userIdentifying: ReadonlySet<string> = new Set<string>(),
+): {
+  runtime: Ga4Runtime;
+  calls: Recorded[];
+  realtimeCalls: Recorded[];
+  audited: AuditEntry[];
+} {
   const calls: Recorded[] = [];
   const realtimeCalls: Recorded[] = [];
+  const audited: AuditEntry[] = [];
   const config = configFromEnv({ GA4_PROPERTY_ID: "123456789", ...envOverrides });
 
   const client = {
@@ -28,7 +43,11 @@ function stubRuntime(
 
   const runtime: Ga4Runtime = {
     config,
-    audit: { record: async () => {} },
+    audit: {
+      record: async (entry: AuditEntry) => {
+        audited.push(entry);
+      },
+    },
     client: async () => client,
     principal: () => "reader@example.iam.gserviceaccount.com",
     probes: () => [],
@@ -41,10 +60,10 @@ function stubRuntime(
       return propertyId;
     },
     metadata: async () => ({}),
-    userScopedCustomDimensions: async () => new Set<string>(),
+    userIdentifyingDimensions: async () => new Set(userIdentifying),
   };
 
-  return { runtime, calls, realtimeCalls };
+  return { runtime, calls, realtimeCalls, audited };
 }
 
 const SAMPLE: RunReportResponse = {
@@ -410,6 +429,49 @@ describe("the live command", () => {
     expect(result.markdown).toMatch(/provisional/);
     expect(result.markdown).toMatch(/not comparable/);
   });
+
+  /**
+   * The realtime path had no privacy check at all, and it is the one path with a
+   * rule that explicitly permits `customUser:<name>`, because realtime genuinely
+   * accepts it. Nothing could reach it: `live` takes a preset id and nothing
+   * else, and every realtime preset's dimensions are constants. So the test that
+   * matters is not "can an attacker do it today" but "is the check there, and do
+   * the shipped presets stay on the right side of it".
+   */
+  it("applies the dimension policy, which realtime's own field rules do not", () => {
+    // Called directly: no preset names a person-identifying dimension, so there
+    // is no argument to runRealtime that would exercise this. A future preset is
+    // the whole point of the check.
+    expect(() =>
+      assertRealtimeFields(["customUser:crm_id"], ["activeUsers"], DEFAULT_ACCESS_POLICY),
+    ).toThrow(/identifies individual people/);
+    expect(() => assertRealtimeFields(["userId"], ["activeUsers"], DEFAULT_ACCESS_POLICY)).toThrow(
+      PolicyError,
+    );
+  });
+
+  it("still permits a customUser: realtime dimension once explicitly opted in", () => {
+    // The permissive realtime rule is not being removed: realtime does accept
+    // this field, and a local refusal claiming otherwise would be wrong.
+    expect(() =>
+      assertRealtimeFields(["customUser:crm_id"], ["activeUsers"], {
+        ...DEFAULT_ACCESS_POLICY,
+        allowUserIdentifyingDimensions: true,
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps every shipped realtime preset on the permitted side of the policy", () => {
+    // So the insurance above never fires for a preset this skill ships. A
+    // realtime preset added with a customUser: dimension fails here rather than
+    // at a user's terminal.
+    for (const preset of PRESETS.filter((entry) => entry.kind === "realtime")) {
+      expect(
+        () => assertRealtimeFields(preset.dimensions, preset.metrics, DEFAULT_ACCESS_POLICY),
+        `realtime preset ${preset.id}`,
+      ).not.toThrow();
+    }
+  });
 });
 
 describe("the query command", () => {
@@ -586,5 +648,205 @@ describe("the query command's filters", () => {
       }),
     ).rejects.toThrow(/not a valid regular expression/);
     expect(calls).toHaveLength(0);
+  });
+});
+
+/**
+ * A filter field and a sort key are dimension names, and neither appears as a
+ * column in the answer.
+ *
+ * That is what made this worth a test suite of its own rather than another case
+ * in the block above. The dimension-list check refused `--dimensions userId`
+ * from the beginning, so the skill looked like it enforced the policy, while
+ * `--filter userId:exact:<a person>` returned that person's page-by-page,
+ * day-by-day history under column headers that read as an ordinary page report.
+ * Redaction could not help: the identifier was in the request, and the response
+ * was page paths. Two sharper shapes of the same hole are pinned below, because
+ * they need no report at all to be useful: an existence oracle for one id, and
+ * a prefix walk that enumerates the property's whole userId space without ever
+ * naming the dimension.
+ */
+describe("a person-identifying dimension used as a filter field or a sort key", () => {
+  it("refuses --filter userId even though userId is not among the columns", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      runQuery(runtime, {
+        metrics: ["screenPageViews", "activeUsers"],
+        dimensions: ["pagePath", "date", "city", "deviceCategory"],
+        filters: [{ field: "userId", op: "exact", value: "cust_10021" }],
+      }),
+    ).rejects.toThrow(/identifies individual people/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("says why a filter field still counts when it is not a column", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    await expect(
+      runQuery(runtime, {
+        metrics: ["activeUsers"],
+        filters: [{ field: "userId", op: "exact", value: "cust_10021" }],
+      }),
+    ).rejects.toThrow(/not among the columns the report returns/);
+  });
+
+  it("refuses the existence oracle: one metric, one exact id, no dimensions", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      runQuery(runtime, {
+        metrics: ["activeUsers"],
+        filters: [{ field: "userId", op: "exact", value: "ada@example.com" }],
+      }),
+    ).rejects.toThrow(/identifies individual people/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses the prefix oracle, which enumerates ids a character at a time", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      runQuery(runtime, {
+        metrics: ["activeUsers"],
+        filters: [{ field: "userId", op: "begins_with", value: "a" }],
+      }),
+    ).rejects.toThrow(/identifies individual people/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a customUser: filter field, the CRM-id and hashed-email surface", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      runQuery(runtime, {
+        metrics: ["sessions"],
+        dimensions: ["pagePath"],
+        filters: [{ field: "customUser:crm_id", op: "exact", value: "42" }],
+      }),
+    ).rejects.toThrow(/customUser:crm_id/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a user-scoped custom dimension only the property's metadata names", async () => {
+    // The live-metadata half of the classifier, on the filter channel too: a
+    // dimension created on the property after this skill shipped.
+    const { runtime, calls } = stubRuntime(SAMPLE, {}, new Set(["customUser:loyalty_ref"]));
+    await expect(
+      runQuery(runtime, {
+        metrics: ["sessions"],
+        filters: [{ field: "customUser:loyalty_ref", op: "exact", value: "x" }],
+      }),
+    ).rejects.toThrow(/customUser:loyalty_ref/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses --sort userId, the other channel that carries a dimension name", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(
+      runQuery(runtime, { metrics: ["sessions"], dimensions: ["date"], order_by: "userId" }),
+    ).rejects.toThrow(/identifies individual people/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("permits a filter on one once explicitly opted in", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE, { GA4_ALLOW_USER_DIMENSIONS: "true" });
+    await runQuery(runtime, {
+      metrics: ["sessions"],
+      dimensions: ["pagePath"],
+      filters: [{ field: "userId", op: "exact", value: "cust_10021" }],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.request.dimensionFilter?.filter?.fieldName).toBe("userId");
+  });
+
+  it("permits a sort by one once explicitly opted in", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE, { GA4_ALLOW_USER_DIMENSIONS: "true" });
+    await runQuery(runtime, { metrics: ["sessions"], dimensions: ["userId"], order_by: "userId" });
+    expect(calls[0]!.request.orderBys).toEqual([
+      { desc: true, dimension: { dimensionName: "userId" } },
+    ]);
+  });
+
+  it("leaves an ordinary dimension filter working, which is the common case", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await runQuery(runtime, {
+      metrics: ["sessions"],
+      dimensions: ["country"],
+      filters: [{ field: "country", op: "exact", value: "Germany" }],
+    });
+    expect(calls[0]!.request.dimensionFilter?.filter?.fieldName).toBe("country");
+  });
+
+  it("leaves a metric filter field working: a metric is not a dimension", async () => {
+    // The gate keys on the classifier, and a metric name would never be
+    // user-identifying, but this is the case a too-broad gate would break: a
+    // filter on a metric must still route to metricFilter and still be sent.
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await runQuery(runtime, {
+      metrics: ["sessions"],
+      filters: [{ field: "sessions", op: "greater_than", value: "100" }],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.request.metricFilter?.filter?.fieldName).toBe("sessions");
+  });
+});
+
+/**
+ * The audit log's whole purpose is answering "what did the agent look at". A
+ * report filtered to one person is the entry that matters most, and it was the
+ * one entry the log could not distinguish from an ordinary whole-site report,
+ * because it recorded the columns and not the filter. The field name goes in;
+ * the value never does, because the value is the person.
+ */
+describe("what the audit log records about narrowing", () => {
+  it("records the filter's field name", async () => {
+    const { runtime, audited } = stubRuntime(SAMPLE);
+    await runQuery(runtime, {
+      metrics: ["sessions"],
+      dimensions: ["pagePath"],
+      filters: [{ field: "pagePath", op: "contains", value: "/blog" }],
+    });
+    expect(audited[0]!.filterFields).toEqual(["pagePath"]);
+  });
+
+  it("records the filter's value nowhere in the entry", async () => {
+    const { runtime, audited } = stubRuntime(SAMPLE);
+    await runQuery(runtime, {
+      metrics: ["sessions"],
+      dimensions: ["pagePath"],
+      filters: [{ field: "pagePath", op: "exact", value: "/invoices/ada@example.com" }],
+    });
+    expect(audited).toHaveLength(1);
+    expect(JSON.stringify(audited[0])).not.toContain("ada@example.com");
+    expect(JSON.stringify(audited[0])).not.toContain("/invoices");
+  });
+
+  it("records the sort field's name", async () => {
+    const { runtime, audited } = stubRuntime(SAMPLE);
+    await runQuery(runtime, { metrics: ["sessions"], dimensions: ["date"], order_by: "date" });
+    expect(audited[0]!.sortField).toBe("date");
+  });
+
+  it("records every field of a multi-condition filter, in order", async () => {
+    const { runtime, audited } = stubRuntime(SAMPLE);
+    await runQuery(runtime, {
+      metrics: ["sessions"],
+      dimensions: ["pagePath", "country"],
+      filters: [
+        { field: "pagePath", op: "begins_with", value: "/docs" },
+        { field: "country", op: "exact", value: "Germany" },
+      ],
+    });
+    expect(audited[0]!.filterFields).toEqual(["pagePath", "country"]);
+  });
+
+  it("records report's substring filter as a field name too", async () => {
+    const { runtime, audited } = stubRuntime(SAMPLE);
+    await runReport(runtime, { report: "top_pages", filter_contains: "/blog" });
+    expect(audited[0]!.filterFields).toEqual(["pagePath"]);
+    expect(JSON.stringify(audited[0])).not.toContain("/blog");
+  });
+
+  it("says nothing about filters when there were none", async () => {
+    const { runtime, audited } = stubRuntime(SAMPLE);
+    await runQuery(runtime, { metrics: ["sessions"] });
+    expect(audited[0]).not.toHaveProperty("filterFields");
+    expect(audited[0]).not.toHaveProperty("sortField");
   });
 });

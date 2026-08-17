@@ -3,7 +3,7 @@ import { quotaWarning } from "../ga4/client.js";
 import { parseDateRange, precedingRange, type Ga4DateRange } from "../ga4/dates.js";
 import { Ga4Error } from "../ga4/errors.js";
 import { flattenNewlines, formatReport } from "../ga4/format.js";
-import { buildFilters, type FilterCondition } from "../ga4/filters.js";
+import { buildFilters, buildOrderBys, type FilterCondition } from "../ga4/filters.js";
 import { applyRenames, assertRealtimeFields, assertWithinLimits, Ga4RequestError, LIMITS } from "../ga4/limits.js";
 import { findPreset, PRESETS } from "../ga4/presets.js";
 import { assertDimensionsAllowed, thresholdProneDimensions } from "../privacy/policy.js";
@@ -64,6 +64,9 @@ function present(
     propertyId: string;
     dimensions: readonly string[];
     metrics: readonly string[];
+    /** Field names only. See AuditEntry: a filter value can be a person. */
+    filterFields?: readonly string[];
+    sortField?: string;
   },
 ): ReportOutcome {
   const notes = [...params.notes];
@@ -94,6 +97,8 @@ function present(
     propertyId: params.propertyId,
     dimensions: params.dimensions,
     metrics: params.metrics,
+    ...(params.filterFields?.length ? { filterFields: params.filterFields } : {}),
+    ...(params.sortField ? { sortField: params.sortField } : {}),
     ...(params.dateRangeLabel ? { dateRange: params.dateRangeLabel } : {}),
     rows: formatted.rowsShown,
   });
@@ -182,10 +187,11 @@ export async function runReport(
     notes.push(preset.note);
   }
 
-  const custom = await runtime.userScopedCustomDimensions(propertyId, signal);
+  const custom = await runtime.userIdentifyingDimensions(propertyId, signal);
   assertDimensionsAllowed(preset.dimensions, runtime.config.access, custom);
 
   let dimensionFilter = preset.dimensionFilter;
+  const filterFields: string[] = [];
   if (params.filter_contains) {
     const field = preset.dimensions[0];
     if (!field) {
@@ -201,6 +207,7 @@ export async function runReport(
         stringFilter: { matchType: "CONTAINS", value: params.filter_contains, caseSensitive: false },
       },
     };
+    filterFields.push(field);
     // Flattened for the same reason as the query filter descriptions in
     // src/ga4/filters.ts: this is prose, outside the fenced block, and the
     // value came from argv.
@@ -230,6 +237,7 @@ export async function runReport(
     propertyId,
     dimensions: preset.dimensions,
     metrics: preset.metrics,
+    filterFields,
   });
 }
 
@@ -334,7 +342,7 @@ export async function runCompare(
   const previous = precedingRange(current);
   const limit = params.limit ?? 10;
 
-  const custom = await runtime.userScopedCustomDimensions(propertyId, signal);
+  const custom = await runtime.userIdentifyingDimensions(propertyId, signal);
   assertDimensionsAllowed(preset.dimensions, runtime.config.access, custom);
   assertWithinLimits({
     dimensions: preset.dimensions,
@@ -401,7 +409,21 @@ export async function runRealtime(
   const propertyId = runtime.resolveProperty(params.property_id);
   const limit = params.limit ?? preset.limit;
 
-  assertRealtimeFields(preset.dimensions, preset.metrics);
+  // The access policy now travels with the realtime field check, which is where
+  // it belongs: assertRealtimeFields explicitly permits `customUser:<name>`
+  // because realtime does accept it, and whether this skill may *ask* for it is
+  // the policy's question, not the API's. Insurance rather than a live defence,
+  // since `live` takes only a preset id and every realtime preset's dimensions
+  // are constants in src/ga4/presets.ts, so no input today can reach it with a
+  // person-identifying name. The day a preset gains one, it stops being
+  // hypothetical, and this was the only report path with no such check.
+  //
+  // No metadata call, unlike report, compare and query. What that call
+  // contributes is a set filtered to the `customUser:` prefix, and the prefix
+  // rule in policy.ts already catches all of those, so here it would spend a
+  // request to learn nothing. Realtime is the command whose point is one round
+  // trip.
+  assertRealtimeFields(preset.dimensions, preset.metrics, runtime.config.access);
 
   const client = await runtime.client();
   const response = await client.runRealtimeReport(
@@ -462,7 +484,7 @@ export async function runQuery(
     notes.push(range.timezoneNote);
   }
 
-  const custom = await runtime.userScopedCustomDimensions(propertyId, signal);
+  const custom = await runtime.userIdentifyingDimensions(propertyId, signal);
   assertDimensionsAllowed(dimensionRename.names, runtime.config.access, custom);
   assertWithinLimits({
     dimensions: dimensionRename.names,
@@ -470,16 +492,21 @@ export async function runQuery(
     limit,
   });
 
-  const filters = buildFilters(params.filters ?? [], metricRename.names);
+  // Both of these take the access policy and the property's own custom
+  // definitions, and both apply it to a dimension name that will never appear
+  // as a column: a filter field and a sort key. assertDimensionsAllowed on
+  // dimensionRename.names above covers only the columns.
+  const filters = buildFilters(params.filters ?? [], metricRename.names, runtime.config.access, custom);
   if (filters.descriptions.length > 0) {
     notes.push(`Filtered to rows where ${filters.descriptions.join(" and ")}.`);
   }
 
-  const orderBys: OrderBy[] | undefined = params.order_by
-    ? metricRename.names.includes(params.order_by)
-      ? [{ desc: true, metric: { metricName: params.order_by } }]
-      : [{ desc: true, dimension: { dimensionName: params.order_by } }]
-    : undefined;
+  const orderBys: OrderBy[] | undefined = buildOrderBys(
+    params.order_by,
+    metricRename.names,
+    runtime.config.access,
+    custom,
+  );
 
   const client = await runtime.client();
   const response = await client.runReport(
@@ -505,5 +532,7 @@ export async function runQuery(
     propertyId,
     dimensions: dimensionRename.names,
     metrics: metricRename.names,
+    filterFields: filters.fields,
+    ...(params.order_by ? { sortField: params.order_by } : {}),
   });
 }
