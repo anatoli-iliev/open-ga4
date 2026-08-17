@@ -523,6 +523,29 @@ describe("the committed build output claim", () => {
       "Assert lib/ matches a fresh build of src/",
     );
   });
+
+  /**
+   * The drift check has to run before anything in the same job rebuilds
+   * lib/: `npm test`'s `pretest` and the explicit Build step both overwrite
+   * it from src/, and once that happens `npm run check:lib` compares a
+   * fresh build to another fresh build of the same source, which always
+   * matches regardless of whether the *committed* lib/ was ever right. That
+   * defect shipped once (this is the fix for it), so the ordering that
+   * fixes it is pinned here rather than left to a comment nobody re-reads
+   * before "tidying" the step order back.
+   */
+  it("runs the lib/ drift check before anything in the job can rebuild lib/", () => {
+    const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+    const driftCheck = ci.indexOf("name: Assert lib/ matches a fresh build of src/");
+    const typecheck = ci.indexOf("name: Typecheck");
+    const test = ci.indexOf("name: Test");
+    const build = ci.indexOf("name: Build");
+    for (const [label, index] of [["Typecheck", typecheck], ["Test", test], ["Build", build]] as const) {
+      expect(driftCheck, "the drift-check step is missing").toBeGreaterThan(-1);
+      expect(index, `the ${label} step is missing`).toBeGreaterThan(-1);
+      expect(driftCheck, `the drift check must run before ${label}, which can rebuild lib/`).toBeLessThan(index);
+    }
+  });
 });
 
 describe("the test helpers", () => {

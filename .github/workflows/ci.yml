@@ -40,17 +40,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      # `pretest` builds first, because src/privacy/surface.test.ts asserts the
-      # privacy guarantees against lib/, the bundle that actually ships.
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
+      # These two checks run on the lib/ that was just checked out from git,
+      # before anything later in this workflow gets a chance to rebuild it:
+      # the Test step's `pretest` and the explicit Build step below both
+      # overwrite lib/ from src/. Run after either of those, `npm run
+      # check:lib` would be comparing a fresh build to a fresh build of the
+      # same source, which always matches regardless of whether the
+      # *committed* lib/ ever agreed with src/ in the first place. That is
+      # the actual claim this job exists to check, so it has to run here,
+      # first, against the untouched checkout.
+      #
+      # `npm run check:lib` is the load-bearing line: it rebuilds src/ into a
+      # temporary directory and diffs it against the committed lib/ without
+      # writing anything. The `git status --porcelain lib/` line under it is
+      # a second net, not the primary check, and it only does real work
+      # because this step has not rebuilt the working tree yet either. Do
+      # not reorder this step to after Typecheck/Test/Build, and do not
+      # delete the `git status` line as "redundant with check:lib": moving
+      # or removing either half silently turns this into a check that always
+      # passes.
       - name: Assert lib/ matches a fresh build of src/
         run: |
           set -euo pipefail
@@ -69,6 +77,19 @@ jobs:
           if [ -n "$leaked" ]; then
             echo "::error::lib/ contains compiled test files:"; echo "$leaked"; exit 1
           fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # `pretest` builds first, because src/privacy/surface.test.ts asserts the
+      # privacy guarantees against lib/, the bundle that actually ships. By
+      # this point the drift check above has already run against the
+      # untouched checkout, so pretest overwriting lib/ here is safe.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
 
 # There is deliberately no publish job here. A publish workflow that can fire on
 # a push is a foot-gun: one bad merge and a broken listing is on ClawHub forever.

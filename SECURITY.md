@@ -277,12 +277,11 @@ Git tag silently changes what the release pipeline runs.
 
 **Provenance: intended, not yet in place.** Nothing has been released. This repository
 intentionally contains **no publish workflow**; a publish job that can fire on a push is
-a foot-gun, and a comment at the end of `ci.yml` says so, still worded for the npm route
-it was written for. When one lands it will be gated on a published GitHub release and
-run `clawhub skill publish` with the source repository, ref and commit passed
-explicitly, so the listing records which commit produced it. None of that exists today,
-so there is nothing to verify: treat anything published under this name before the first
-tagged release as not from here.
+a foot-gun, and a comment at the end of `ci.yml` records that. When one lands it will be
+gated on a published GitHub release and run `clawhub skill publish` with the source
+repository, ref and commit passed explicitly, so the listing records which commit
+produced it. None of that exists today, so there is nothing to verify: treat anything
+published under this name before the first tagged release as not from here.
 
 ## What is out of scope
 
