@@ -21,6 +21,31 @@ import type { Ga4Runtime } from "../runtime.js";
 const CORE_PRESETS = PRESETS.filter((preset) => preset.kind === "core").map((preset) => preset.id);
 const REALTIME_PRESETS = PRESETS.filter((preset) => preset.kind === "realtime").map((p) => p.id);
 
+/** "a, b or c", so a list of three does not read as "a or b or c". */
+function orList(items: readonly string[]): string {
+  if (items.length < 2) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+
+/**
+ * The message for a preset id that `report` or `compare` cannot use.
+ *
+ * A realtime id is not unknown: it exists, it is spelled correctly, and there
+ * is a command that runs it. Saying "unknown" sends an agent to check the
+ * spelling of something that was already right, which is the wrong next move.
+ */
+function notACoreReport(id: string, exists: boolean, why: string): Ga4Error {
+  return new Ga4Error(
+    "INVALID_REQUEST",
+    exists
+      ? `"${id}" is a realtime breakdown, not a report preset.`
+      : `Unknown report "${id}".`,
+    exists
+      ? `${why} Report presets: ${CORE_PRESETS.join(", ")}.`
+      : `Available: ${CORE_PRESETS.join(", ")}. For ${orList(REALTIME_PRESETS)}, use live.`,
+  );
+}
+
 type ReportOutcome = {
   markdown: string;
   details: Record<string, unknown>;
@@ -142,11 +167,7 @@ export async function runReport(
   // did. runRealtime has always checked this in the other direction.
   const preset = findPreset(params.report);
   if (!preset || preset.kind !== "core") {
-    throw new Ga4Error(
-      "INVALID_REQUEST",
-      `Unknown report "${params.report}".`,
-      `Available: ${CORE_PRESETS.join(", ")}. For ${REALTIME_PRESETS.join(" or ")}, use live.`,
-    );
+    throw notACoreReport(params.report, preset !== undefined, `Run it with live: live ${params.report}.`);
   }
 
   const propertyId = runtime.resolveProperty(params.property_id);
@@ -229,11 +250,11 @@ export async function runCompare(
   // can answer.
   const preset = findPreset(params.report);
   if (!preset || preset.kind !== "core") {
-    throw new Ga4Error(
-      "INVALID_REQUEST",
-      `Unknown report "${params.report}".`,
-      `Available: ${CORE_PRESETS.join(", ")}. Realtime data covers about 30 minutes, so there ` +
-        `is no period to compare it with.`,
+    throw notACoreReport(
+      params.report,
+      preset !== undefined,
+      "Realtime data covers about 30 minutes, so there is no earlier period to compare it against; " +
+        `live ${params.report} reports it as it stands.`,
     );
   }
 

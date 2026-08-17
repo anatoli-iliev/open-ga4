@@ -164,7 +164,11 @@ describe("the report command", () => {
       // 28-day report headed "who is on the site right now": an answer to a
       // question nobody asked, wearing the label of the one they did.
       const { runtime, calls } = stubRuntime(SAMPLE);
-      await expect(runReport(runtime, { report: id })).rejects.toThrow(/Unknown report/);
+      // Not "unknown": the id exists and is spelled correctly, and saying
+      // unknown sends an agent to check spelling that was already right.
+      await expect(runReport(runtime, { report: id })).rejects.toThrow(
+        new RegExp(`"${id}" is a realtime breakdown, not a report preset`),
+      );
       expect(calls).toHaveLength(0);
     },
   );
@@ -175,7 +179,16 @@ describe("the report command", () => {
     const { runtime } = stubRuntime(SAMPLE);
     await expect(runReport(runtime, { report: "realtime_now" })).rejects.toMatchObject({
       code: "INVALID_REQUEST",
-      fix: expect.stringContaining("use live"),
+      fix: expect.stringContaining("live realtime_now"),
+    });
+  });
+
+  it("still calls a genuinely unknown id unknown, and lists the realtime ones readably", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    await expect(runReport(runtime, { report: "not_a_preset" })).rejects.toMatchObject({
+      message: expect.stringContaining('Unknown report "not_a_preset"'),
+      // "a, b or c", not "a or b or c".
+      fix: expect.stringContaining("realtime_now, realtime_pages or realtime_events"),
     });
   });
 
@@ -210,7 +223,10 @@ describe("the compare command", () => {
 
   it("refuses a realtime preset, which has no previous period to compare against", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE);
-    await expect(runCompare(runtime, { report: "realtime_now" })).rejects.toThrow(/Unknown report/);
+    await expect(runCompare(runtime, { report: "realtime_now" })).rejects.toMatchObject({
+      message: expect.stringContaining("is a realtime breakdown, not a report preset"),
+      fix: expect.stringContaining("no earlier period to compare it against"),
+    });
     expect(calls).toHaveLength(0);
   });
 });
