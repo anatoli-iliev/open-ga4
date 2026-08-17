@@ -1,3 +1,4 @@
+import { assertDimensionsAllowed, type AccessPolicy } from "../privacy/policy.js";
 import { Ga4Error } from "./errors.js";
 
 /**
@@ -171,12 +172,39 @@ export const REALTIME_METRICS: ReadonlySet<string> = new Set([
   "screenPageViews",
 ]);
 
+/**
+ * Realtime's own custom-dimension form, and the reason the privacy policy has to
+ * run here too.
+ *
+ * `customUser:<name>` is the field a team reaches for when joining analytics
+ * back to a person, so in practice it holds CRM ids, account ids and hashed
+ * emails: precisely what src/privacy/policy.ts refuses by default. This pattern
+ * *permits* it, because realtime does accept it and a local refusal claiming
+ * otherwise would be wrong. Whether it may be asked for is a different question
+ * from whether the API has it, and that one is the policy's.
+ */
 const REALTIME_CUSTOM_DIMENSION = /^customUser:[A-Za-z0-9_]+$/;
 
+/**
+ * Everything realtime refuses locally: fields it does not have, and fields it
+ * has but that this skill will not ask for by default.
+ *
+ * The policy check is here rather than at the call site for the reason
+ * buildFilters holds its own: the caller that skips it is the defect, and a
+ * required argument is what stops one being written. runRealtime was that
+ * caller. Nothing could exploit it, because `live` takes only a preset id and
+ * every realtime preset's dimensions are constants, but the check was missing
+ * from the one command that has a permissive `customUser:` rule of its own,
+ * which is the worst place for it to be missing from.
+ */
 export function assertRealtimeFields(
   dimensions: readonly string[],
   metrics: readonly string[],
+  policy: AccessPolicy,
+  userScopedCustom: ReadonlySet<string> = new Set(),
 ): void {
+  assertDimensionsAllowed(dimensions, policy, userScopedCustom);
+
   const badDimensions = dimensions.filter(
     (name) => !REALTIME_DIMENSIONS.has(name) && !REALTIME_CUSTOM_DIMENSION.test(name),
   );

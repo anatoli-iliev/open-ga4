@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { configFromEnv } from "../config.js";
 import type { Ga4Client, RunReportRequest, RunReportResponse } from "../ga4/client.js";
+import { assertRealtimeFields } from "../ga4/limits.js";
+import { PRESETS } from "../ga4/presets.js";
 import type { AuditEntry } from "../privacy/audit.js";
-import { assertPropertyAllowed, normalizePropertyId } from "../privacy/policy.js";
+import {
+  DEFAULT_ACCESS_POLICY,
+  PolicyError,
+  assertPropertyAllowed,
+  normalizePropertyId,
+} from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
 import { runCompare, runQuery, runRealtime, runReport } from "./reports.js";
 
@@ -421,6 +428,49 @@ describe("the live command", () => {
     const result = await runRealtime(runtime, {});
     expect(result.markdown).toMatch(/provisional/);
     expect(result.markdown).toMatch(/not comparable/);
+  });
+
+  /**
+   * The realtime path had no privacy check at all, and it is the one path with a
+   * rule that explicitly permits `customUser:<name>`, because realtime genuinely
+   * accepts it. Nothing could reach it: `live` takes a preset id and nothing
+   * else, and every realtime preset's dimensions are constants. So the test that
+   * matters is not "can an attacker do it today" but "is the check there, and do
+   * the shipped presets stay on the right side of it".
+   */
+  it("applies the dimension policy, which realtime's own field rules do not", () => {
+    // Called directly: no preset names a person-identifying dimension, so there
+    // is no argument to runRealtime that would exercise this. A future preset is
+    // the whole point of the check.
+    expect(() =>
+      assertRealtimeFields(["customUser:crm_id"], ["activeUsers"], DEFAULT_ACCESS_POLICY),
+    ).toThrow(/identifies individual people/);
+    expect(() => assertRealtimeFields(["userId"], ["activeUsers"], DEFAULT_ACCESS_POLICY)).toThrow(
+      PolicyError,
+    );
+  });
+
+  it("still permits a customUser: realtime dimension once explicitly opted in", () => {
+    // The permissive realtime rule is not being removed: realtime does accept
+    // this field, and a local refusal claiming otherwise would be wrong.
+    expect(() =>
+      assertRealtimeFields(["customUser:crm_id"], ["activeUsers"], {
+        ...DEFAULT_ACCESS_POLICY,
+        allowUserIdentifyingDimensions: true,
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps every shipped realtime preset on the permitted side of the policy", () => {
+    // So the insurance above never fires for a preset this skill ships. A
+    // realtime preset added with a customUser: dimension fails here rather than
+    // at a user's terminal.
+    for (const preset of PRESETS.filter((entry) => entry.kind === "realtime")) {
+      expect(
+        () => assertRealtimeFields(preset.dimensions, preset.metrics, DEFAULT_ACCESS_POLICY),
+        `realtime preset ${preset.id}`,
+      ).not.toThrow();
+    }
   });
 });
 
