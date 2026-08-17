@@ -91,6 +91,81 @@ describe("assertDimensionsAllowed", () => {
   });
 });
 
+/**
+ * A name used as a filter field or a sort key is refused on the same rule, and
+ * has to be explained differently.
+ *
+ * The refusal an agent reads decides what it tries next. Told only that `userId`
+ * identifies people, the obvious repair is to take it out of the output columns
+ * and ask again with it as a filter instead: the exact request being refused,
+ * and one that comes back looking like an ordinary page report. So the message
+ * has to say that filtering on a person is asking about that person however the
+ * columns are labelled, and the suggested fix has to be an aggregate question
+ * rather than "the same numbers without that dimension", which here would be
+ * advice to retry the attack.
+ */
+describe("the refusal for a filter field or a sort key", () => {
+  function messageFor(use: "columns" | "filter" | "sort"): string {
+    try {
+      assertDimensionsAllowed(["userId"], DEFAULT_ACCESS_POLICY, new Set(), use);
+    } catch (error) {
+      return (error as PolicyError).message;
+    }
+    throw new Error("expected a refusal, got none");
+  }
+
+  it("still refuses on the same rule as a column", () => {
+    expect(() =>
+      assertDimensionsAllowed(["userId"], DEFAULT_ACCESS_POLICY, new Set(), "filter"),
+    ).toThrow(PolicyError);
+    expect(() =>
+      assertDimensionsAllowed(["userId"], DEFAULT_ACCESS_POLICY, new Set(), "sort"),
+    ).toThrow(PolicyError);
+  });
+
+  it("says a filter field counts even though it is not one of the columns", () => {
+    expect(messageFor("filter")).toMatch(/not among the columns the report returns/);
+  });
+
+  it("closes off the wrong repair: dropping the name from the dimension list", () => {
+    expect(messageFor("filter")).toMatch(
+      /Leaving it out of the dimension list does not make this an aggregate question/,
+    );
+  });
+
+  it("says a sort key counts even though it is not one of the columns", () => {
+    expect(messageFor("sort")).toMatch(/orders the report by which person each row belongs to/);
+  });
+
+  it("keeps the opt-in and the aggregate suggestion on every channel", () => {
+    for (const use of ["columns", "filter", "sort"] as const) {
+      expect(messageFor(use)).toMatch(/GA4_ALLOW_USER_DIMENSIONS/);
+      expect(messageFor(use)).toMatch(/totalUsers or activeUsers/);
+    }
+  });
+
+  it("says nothing about columns when the name really was a column", () => {
+    expect(messageFor("columns")).not.toMatch(/not among the columns/);
+  });
+
+  it("does not tell a filtered query to retry without the dimension", () => {
+    try {
+      assertDimensionsAllowed(["userId"], DEFAULT_ACCESS_POLICY, new Set(), "filter");
+      throw new Error("expected a refusal, got none");
+    } catch (error) {
+      const fix = (error as PolicyError).fix;
+      expect(fix).toMatch(/without narrowing it to a person/);
+      expect(fix).not.toMatch(/same numbers without that dimension/);
+    }
+  });
+
+  it("permits both once explicitly opted in", () => {
+    const allowed = { ...DEFAULT_ACCESS_POLICY, allowUserIdentifyingDimensions: true };
+    expect(() => assertDimensionsAllowed(["userId"], allowed, new Set(), "filter")).not.toThrow();
+    expect(() => assertDimensionsAllowed(["userId"], allowed, new Set(), "sort")).not.toThrow();
+  });
+});
+
 describe("assertPropertyAllowed", () => {
   it("allows any property when no allowlist is configured", () => {
     expect(() => assertPropertyAllowed("123456789", DEFAULT_ACCESS_POLICY)).not.toThrow();

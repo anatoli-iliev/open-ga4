@@ -149,6 +149,21 @@ by default: `userId`, `signedInWithUserId`, and any dimension whose name begins
 `customUser:`, the prefix GA4 gives user-scoped custom dimensions, so one created on
 your property after this skill shipped is blocked too, with no skill update.
 
+**Blocked wherever the name appears, not only in the output columns.** A dimension name
+reaches a request through three channels: the column list (`--dimensions`), a filter
+field (`query --filter userId:exact:...`), and a sort key (`--sort userId`). All three go
+through the same check. This is worth stating because only the first is obvious, and the
+other two are the dangerous ones: a filter is what selects *which* rows a report
+describes, and the filter field never appears as a column, so a report filtered to one
+person comes back as ordinary page paths and dates with nothing in it to redact. That
+was a real hole in this skill, closed in `buildFilters` and `buildOrderBys`
+(`src/ga4/filters.ts`) rather than at their call site, so a future caller inherits the
+check instead of having to remember it. The refusal says so in as many words: filtering
+on a person-identifying dimension is a request for person-level data even when that
+dimension is not among the columns. Tests in `src/tools/reports.test.ts` pin all three
+channels, including the two sharpest shapes of the bypass (an existence check for one
+id, and a `begins_with` walk that enumerates ids a character at a time).
+
 `src/runtime.ts` also reads the property's live metadata and hands `classifyDimension`
 the custom definitions it finds there. That set is filtered to the same `customUser:`
 prefix, so today it confirms the prefix rule rather than extending it; the outcome
@@ -213,13 +228,25 @@ contains `writeFile`, `appendFile`, `createWriteStream` or `mkdir`.
 **The audit log is the one exception, and it is off by default.** Set the
 `GA4_AUDIT_LOG` environment variable to a path and the skill appends one JSON line per
 report the agent runs (`report`, `compare`, `live` and `query`), recording the time,
-the property id, the command, the dimensions and metrics asked for, the date range,
-and how many rows came back. It records no response bodies, no row values and no
+the property id, the command, the dimensions and metrics asked for, the **field names**
+any filter narrowed the report to and any sort ordered it by, the date range, and how
+many rows came back. It records no response bodies, no row values and no
 totals: a count of rows, never the rows. The log's `tool` field holds the command name
 exactly as it is typed, so a line reads back as the thing that was run. `fields`,
 `properties` and `doctor` are not logged. The log covers the reports the agent asked
 for, not setup and discovery, and `doctor` does run one live `activeUsers` query as its
 Data API check, so if you need a record of every Data API call this file is not it.
+
+**It records filter field names and never filter values, deliberately.** A filter is
+what selects which rows a report is about, and the field it selects on is not one of
+the columns that comes back, so a line naming only the columns cannot tell a whole-site
+page report apart from the same report narrowed to one named person. The field name is
+what makes that visible. The value is not recorded, because the value is the person: it
+is the customer id, the email, or the URL with a token in it, and writing it here would
+put exactly the data this skill keeps off disk into the file you enabled in order to
+feel safer. So a line says a report was filtered on `userId`, and never to which
+`userId`. `src/privacy/audit.test.ts` asserts the whole key set of a written line, so a
+value cannot be added to it quietly.
 
 It exists so you can answer "what did the agent look at last Tuesday" without keeping
 the data itself. If the file cannot be written the skill warns and continues, because

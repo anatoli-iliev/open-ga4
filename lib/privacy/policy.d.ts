@@ -56,8 +56,29 @@ export declare class PolicyError extends Ga4Error {
         fix?: string;
     });
 }
-/** Refuse a query that asks for person-level dimensions, naming the opt-in. */
-export declare function assertDimensionsAllowed(dimensions: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>): void;
+/**
+ * Which channel carried a dimension name into the request.
+ *
+ * It changes nothing about the decision and everything about the explanation.
+ * A name used only as a filter field or a sort key never appears as a column,
+ * so a refusal that says no more than "this dimension identifies people" leaves
+ * the reader with an obvious and wrong next move: drop it from the output
+ * columns and ask again. That is exactly the request being refused. Filtering a
+ * report down to one person's rows is a request for that person's data whatever
+ * the columns are called, and the message has to say so, because it is the part
+ * that is not self-evident.
+ */
+export type DimensionUse = "columns" | "filter" | "sort";
+/**
+ * Refuse a query that asks for person-level dimensions, naming the opt-in.
+ *
+ * Called on every channel a dimension name can travel through, not only the
+ * output column list: see `buildFilters` and `buildOrderBys` in
+ * src/ga4/filters.ts. A gate on the column list alone was bypassable, and in
+ * the worst way, because the refusal it left in place made the skill look like
+ * it was enforcing something it was not.
+ */
+export declare function assertDimensionsAllowed(dimensions: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>, use?: DimensionUse): void;
 export declare function assertPropertyAllowed(propertyId: string, policy: AccessPolicy): void;
 /**
  * Turn whatever the user pasted into a bare numeric property id.

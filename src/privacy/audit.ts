@@ -8,6 +8,11 @@ import { appendFile } from "node:fs/promises";
  * exactly the personal data this skill works to keep off disk, so response
  * bodies, row values and totals never reach it.
  *
+ * One part of the question is held back for the same reason: a filter's value.
+ * Which fields were filtered on and sorted by is recorded, because that is what
+ * says whether a report was about a person at all; what they were filtered *to*
+ * is not, because that is the person.
+ *
  * This is the only module in the skill that writes to a file, which is what
  * makes the "nothing is written to disk" claim checkable: `surface.test.ts`
  * asserts no other shipped module calls a write API.
@@ -19,6 +24,26 @@ export type AuditEntry = {
   dimensions?: readonly string[];
   metrics?: readonly string[];
   dateRange?: string;
+  /**
+   * The field names a filter narrowed the report to, and the field name it was
+   * sorted by. Names only, never values.
+   *
+   * The dimension and metric lists above describe the shape of the answer; they
+   * do not say which slice of it was asked for. A report whose columns are page
+   * paths and dates can still be a report about one named person, because the
+   * filter is what selects the rows and the filter field never appears as a
+   * column. Recording only the columns made exactly that query indistinguishable
+   * in this log from an ordinary whole-site one.
+   *
+   * The *value* is deliberately absent, and that is not an oversight to be
+   * fixed later. A filter value is the identifier itself (a customer id, an
+   * email, a URL with a token in it), so writing it here would put the personal
+   * data this skill keeps off disk onto disk, in the file people enable to feel
+   * safer. The field name answers "was this a question about a person" without
+   * answering "which person".
+   */
+  filterFields?: readonly string[];
+  sortField?: string;
   /** How many rows came back. A count, never a value. */
   rows?: number;
 };
@@ -55,6 +80,8 @@ export function createAuditLogger(options: AuditLoggerOptions): AuditLogger {
           property: entry.propertyId,
           ...(entry.dimensions?.length ? { dimensions: [...entry.dimensions] } : {}),
           ...(entry.metrics?.length ? { metrics: [...entry.metrics] } : {}),
+          ...(entry.filterFields?.length ? { filterFields: [...entry.filterFields] } : {}),
+          ...(entry.sortField ? { sortField: entry.sortField } : {}),
           ...(entry.dateRange ? { dateRange: entry.dateRange } : {}),
           ...(entry.rows === undefined ? {} : { rows: entry.rows }),
         }) + "\n";

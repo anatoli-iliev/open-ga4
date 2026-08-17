@@ -164,11 +164,57 @@ export class PolicyError extends Ga4Error {
   }
 }
 
-/** Refuse a query that asks for person-level dimensions, naming the opt-in. */
+/**
+ * Which channel carried a dimension name into the request.
+ *
+ * It changes nothing about the decision and everything about the explanation.
+ * A name used only as a filter field or a sort key never appears as a column,
+ * so a refusal that says no more than "this dimension identifies people" leaves
+ * the reader with an obvious and wrong next move: drop it from the output
+ * columns and ask again. That is exactly the request being refused. Filtering a
+ * report down to one person's rows is a request for that person's data whatever
+ * the columns are called, and the message has to say so, because it is the part
+ * that is not self-evident.
+ */
+export type DimensionUse = "columns" | "filter" | "sort";
+
+/** The sentence that explains why a name off the column list still counts. */
+function whyItStillCounts(use: DimensionUse, names: string, one: boolean): string {
+  const it = one ? "it" : "them";
+  const isAre = one ? "is" : "are";
+  switch (use) {
+    case "filter":
+      return (
+        `Filtering on ${names} asks for the rows belonging to particular people, so the numbers ` +
+        `that come back describe those people even though ${names} ${isAre} not among the columns ` +
+        `the report returns. Leaving ${it} out of the dimension list does not make this an ` +
+        `aggregate question, and a filter value is itself personal data, so it is refused here too. `
+      );
+    case "sort":
+      return (
+        `Sorting by ${names} orders the report by which person each row belongs to, so it asks ` +
+        `for person-level data even though ${names} ${isAre} not among the columns the report ` +
+        `returns. `
+      );
+    case "columns":
+      return "";
+  }
+}
+
+/**
+ * Refuse a query that asks for person-level dimensions, naming the opt-in.
+ *
+ * Called on every channel a dimension name can travel through, not only the
+ * output column list: see `buildFilters` and `buildOrderBys` in
+ * src/ga4/filters.ts. A gate on the column list alone was bypassable, and in
+ * the worst way, because the refusal it left in place made the skill look like
+ * it was enforcing something it was not.
+ */
 export function assertDimensionsAllowed(
   dimensions: readonly string[],
   policy: AccessPolicy,
   userScopedCustom: ReadonlySet<string> = new Set(),
+  use: DimensionUse = "columns",
 ): void {
   if (policy.allowUserIdentifyingDimensions) {
     return;
@@ -179,17 +225,25 @@ export function assertDimensionsAllowed(
   if (blocked.length === 0) {
     return;
   }
+  const one = blocked.length === 1;
+  const it = one ? "it" : "them";
+  const names = blocked.join(", ");
   throw new PolicyError(
-    `${blocked.join(", ")} ${blocked.length === 1 ? "identifies" : "identify"} individual people, ` +
-      `so this skill does not request ${blocked.length === 1 ? "it" : "them"} by default. ` +
-      `To allow ${blocked.length === 1 ? "it" : "them"}, set the environment variable ` +
+    `${names} ${one ? "identifies" : "identify"} individual people, ` +
+      `so this skill does not request ${it} by default. ` +
+      whyItStillCounts(use, names, one) +
+      `To allow ${it}, set the environment variable ` +
       `GA4_ALLOW_USER_DIMENSIONS to true. ` +
       `For counts of people, use the totalUsers or activeUsers metric instead; ` +
       `it answers "how many" without naming anyone.`,
     {
       fix:
-        "This skill refused the question on this machine; Google was never asked. Ask for the " +
-        "same numbers without that dimension, or have a person set the variable named above.",
+        use === "columns"
+          ? "This skill refused the question on this machine; Google was never asked. Ask for the " +
+            "same numbers without that dimension, or have a person set the variable named above."
+          : "This skill refused the question on this machine; Google was never asked. Ask the same " +
+            "question without narrowing it to a person (a whole-site or per-page total, or the " +
+            "activeUsers metric for how many), or have a person set the variable named above.",
     },
   );
 }

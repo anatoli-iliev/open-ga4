@@ -60,6 +60,54 @@ describe("createAuditLogger", () => {
     expect(entry).not.toHaveProperty("response");
   });
 
+  /**
+   * A report filtered to one person is the line this log exists for, and it was
+   * the line it could not tell apart from a whole-site report: the fields
+   * recorded were the *columns*, and a filter field is never a column. The name
+   * goes in so the question is visible; the value stays out because the value is
+   * the person, and writing it here would put the personal data this skill keeps
+   * off disk into the file people enable in order to feel safer.
+   */
+  it("records the field names a report was filtered on and sorted by", async () => {
+    const { logger, lines } = capture();
+    await logger.record({
+      tool: "query",
+      propertyId: "123456789",
+      dimensions: ["pagePath"],
+      metrics: ["activeUsers"],
+      filterFields: ["userId", "country"],
+      sortField: "activeUsers",
+    });
+
+    expect(JSON.parse(lines[0]!.line)).toMatchObject({
+      filterFields: ["userId", "country"],
+      sortField: "activeUsers",
+    });
+  });
+
+  it("records no filter value, which is the half that names a person", async () => {
+    const { logger, lines } = capture();
+    await logger.record({
+      tool: "query",
+      propertyId: "123456789",
+      filterFields: ["userId"],
+      sortField: "userId",
+    });
+
+    // The key set, exhaustively: there is no field on the entry a value could
+    // arrive through, and asserting the whole set is what keeps it that way.
+    const entry = JSON.parse(lines[0]!.line) as Record<string, unknown>;
+    expect(Object.keys(entry).sort()).toEqual([
+      "filterFields",
+      "property",
+      "sortField",
+      "time",
+      "tool",
+    ]);
+    expect(entry).not.toHaveProperty("filterValues");
+    expect(entry).not.toHaveProperty("filters");
+  });
+
   it("omits empty field lists rather than logging noise", async () => {
     const { logger, lines } = capture();
     await logger.record({ tool: "report", propertyId: "1", dimensions: [], metrics: [] });

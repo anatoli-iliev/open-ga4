@@ -239,8 +239,12 @@ access instead of property-level, or a Cloud IAM role nobody understands.
   as soon as the `userId` dimension is used, which is why that dimension is blocked by
   default.
 - `userId`, `signedInWithUserId` and user-scoped custom dimensions are refused by
-  default (`src/privacy/policy.ts`). Turning them on means setting
-  `GA4_ALLOW_USER_DIMENSIONS` in the environment; there is no flag for it.
+  default (`src/privacy/policy.ts`), on every channel that can carry a dimension name
+  into a request: the output column list, a `query --filter` field, and a `--sort` key.
+  The last two matter most, because neither appears as a column in the answer, so a
+  report filtered to one person returns ordinary page paths with nothing in it for
+  redaction to catch. Turning them on means setting `GA4_ALLOW_USER_DIMENSIONS` in the
+  environment; there is no flag for it.
 - The optional `GA4_PROPERTY_ALLOWLIST` refuses any property id you did not list.
 - Setup grants **Viewer on one property**, inside Google Analytics under
   Admin > Property access management. No Cloud IAM role is needed and none helps.
@@ -261,8 +265,24 @@ Git tag silently changes what the release pipeline runs.
   commit SHA with the version in a trailing comment. A tag can be moved; a SHA cannot.
   Dependabot proposes updates weekly (`.github/dependabot.yml`) so pinning does not
   mean rotting.
-- **Least privilege in CI.** `permissions: contents: read` at workflow level. No
-  secrets are used, because tests need no credentials and no network.
+- **Least privilege in CI.** `permissions: contents: read` at workflow level, in both
+  workflows, and a test fails if anything wider is ever granted. `.github/workflows/ci.yml`
+  uses no secret at all, because the tests need no credentials and no network. The one
+  secret this repository has, `CLAWHUB_TOKEN`, exists only in the release workflow, and
+  only in the two steps that need it: the one that checks it is configured, and the one
+  that publishes.
+- **A pinned publisher, and the credential only where it publishes.** Releasing runs one
+  external tool, which is also the only thing that ever holds the ClawHub credential. It is
+  installed in its own step from `.github/publish/package-lock.json`, committed to this
+  repository, with an integrity hash for every package in its tree, with npm lifecycle
+  scripts disabled so nothing in that tree can execute during install, and with no secret
+  in that step's environment. The next step supplies the token and runs the binary that
+  install produced. A single `npx clawhub` invocation used to do both jobs at
+  once: that pinned the top-level version and left everything underneath it to be resolved
+  by semver range at the moment the release ran, with the token already in scope. Pinning
+  the top level is worth little when the resolution that matters is one level down, so the
+  publisher gets the same treatment as the actions: resolved once, recorded, and updated
+  deliberately by Dependabot.
 - **Nothing is published to npm.** `package.json` is marked `private`, and the npm
   package name is abandoned rather than renamed: this is a skill, not a library, and
   nobody should `npm install` it. Distribution is ClawHub and `git`, which copy the
