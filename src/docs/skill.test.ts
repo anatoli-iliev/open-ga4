@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { COMMANDS, KNOWN_FLAGS, parseArgs } from "../cli/args.js";
+import { EXIT } from "../cli/exit.js";
 import { BLOCKED_ON_VALUES } from "../setup/state.js";
 import { environmentVariablesRead, repoRoot } from "../testing/files.test-support.js";
 
@@ -336,6 +337,18 @@ describe("SKILL.md environment variables", () => {
 });
 
 describe("SKILL.md guidance", () => {
+  it("documents exactly the exit codes the CLI can return", () => {
+    // Both directions. A code in the table that the CLI cannot return is a
+    // promise about behaviour that does not exist (exit 1 was exactly that
+    // until UNEXPECTED stopped being folded into "Google refused"), and a code
+    // the CLI can return with no row here leaves the agent guessing at the
+    // moment it most needs an instruction. src/cli/exit.test.ts asserts the
+    // other half: that exitCodeFor can actually produce each of these.
+    const table = section(SKILL, "## Exit codes");
+    const documented = new Set([...table.matchAll(/^\| (\d+) \|/gm)].map((match) => Number(match[1])));
+    expect(documented).toEqual(new Set(Object.values(EXIT)));
+  });
+
   it("tells the agent that zero rows is exit 0 and not a failure", () => {
     const exitCodes = section(SKILL, "## Exit codes");
     expect(exitCodes).toMatch(/zero rows/i);

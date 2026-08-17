@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { EXIT, exitCodeFor } from "../cli/exit.js";
+import { Ga4Error } from "../ga4/errors.js";
 import {
   DEFAULT_ACCESS_POLICY,
   PolicyError,
@@ -148,5 +150,72 @@ describe("normalizePropertyId", () => {
 
   it("rejects a UA property id", () => {
     expect(() => normalizePropertyId("UA-12345-1")).toThrow(PolicyError);
+  });
+});
+
+/**
+ * Every refusal in this module is made on this machine, before a socket is
+ * opened. What the *user* is told about that is decided by whether the error
+ * is a Ga4Error: anything else falls through diagnose() into the generic
+ * "UNEXPECTED" bucket, which says Google refused the request and offers "Run
+ * doctor to check the setup" as the fix. That is what these assert against,
+ * so the exit code and the diagnosis stay attached to the refusal rather than
+ * being reconstructed by a caller.
+ */
+describe("what a local refusal reports itself as", () => {
+  /** Runs a thrower and returns the error it produced. */
+  function thrown(run: () => void): Ga4Error {
+    try {
+      run();
+    } catch (error) {
+      expect(error).toBeInstanceOf(Ga4Error);
+      return error as Ga4Error;
+    }
+    throw new Error("expected a refusal, got none");
+  }
+
+  it("reports a blocked dimension as bad input, not as a refusal from Google", () => {
+    const error = thrown(() => assertDimensionsAllowed(["userId"], DEFAULT_ACCESS_POLICY));
+    expect(error.code).toBe("INVALID_REQUEST");
+    expect(exitCodeFor(error)).toBe(EXIT.BAD_INPUT);
+    expect(error.fix).not.toMatch(/Run doctor/);
+    expect(error.fix).toMatch(/Google was never asked/);
+  });
+
+  it("reports a property outside the allowlist as bad input", () => {
+    const error = thrown(() =>
+      assertPropertyAllowed("555000111", {
+        ...DEFAULT_ACCESS_POLICY,
+        propertyAllowlist: ["123456789"],
+      }),
+    );
+    expect(error.code).toBe("INVALID_REQUEST");
+    expect(exitCodeFor(error)).toBe(EXIT.BAD_INPUT);
+    expect(error.fix).toMatch(/Nothing was sent to Google/);
+  });
+
+  it.each(["G-ABC123XYZ", "GT-ABC123", "AW-12345"])(
+    "routes %s to the wrong-property setup step rather than to a Google refusal",
+    (input) => {
+      // PROPERTY_NOT_FOUND is what src/setup/state.ts maps to
+      // blocked_on: "wrong_property", the step written for exactly this
+      // mistake. Exit 3 sends the agent to doctor, and doctor now has an
+      // answer for it, which is what makes that route terminate.
+      const error = thrown(() => normalizePropertyId(input));
+      expect(error.code).toBe("PROPERTY_NOT_FOUND");
+      expect(exitCodeFor(error)).toBe(EXIT.SETUP_INCOMPLETE);
+    },
+  );
+
+  it("reports a value that identifies nothing at all as bad input", () => {
+    const error = thrown(() => normalizePropertyId("banana"));
+    expect(error.code).toBe("INVALID_REQUEST");
+    expect(exitCodeFor(error)).toBe(EXIT.BAD_INPUT);
+  });
+
+  it("reports a blank property the same way as none configured at all", () => {
+    const error = thrown(() => normalizePropertyId("   "));
+    expect(error.code).toBe("NO_PROPERTY");
+    expect(exitCodeFor(error)).toBe(EXIT.SETUP_INCOMPLETE);
   });
 });

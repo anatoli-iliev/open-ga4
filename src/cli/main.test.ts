@@ -385,6 +385,72 @@ describe("client-side validation exits 2, not 1 or 4", () => {
   });
 });
 
+/**
+ * The four refusals the whole skill makes without asking Google anything.
+ * Every one of them used to exit 4, "Google refused", because PolicyError and
+ * DateRangeError were plain Errors and diagnose() can only classify a
+ * non-HTTP error as UNEXPECTED. So a mistyped date range was reported to a
+ * non-technical user as Google turning them down, and the privacy refusal
+ * this skill makes on their own machine was attributed to Google as well.
+ *
+ * Three of the four run through main() itself: each throws inside
+ * runtime.resolveProperty or the date parser, both of which run before
+ * runtime.client() is ever touched, so none can reach a credential or a
+ * socket regardless of what is installed on the machine running the test.
+ * The privacy refusal is the exception, because runQuery consults
+ * userScopedCustomDimensions (which does call client()) before checking the
+ * policy, so it goes through dispatch() with fakeRuntime() instead.
+ */
+describe("a refusal made locally never reports itself as Google refusing", () => {
+  it("sends a measurement id to the setup tree, not to Google's doorstep", async () => {
+    const c = capture();
+    const code = await main(["report", "overview", "--property", "G-ABC12345"], {}, c.streams);
+    // Exit 3, because PROPERTY_NOT_FOUND is what doctor turns into
+    // blocked_on: "wrong_property", the one setup step that names this
+    // mistake. Exit 4 would have sent the agent to relay a refusal Google
+    // never made.
+    expect(code).toBe(EXIT.SETUP_INCOMPLETE);
+    expect(c.err.join("")).toContain("measurement id");
+  });
+
+  it("exits 2 for a property outside the allowlist, which Google never sees", async () => {
+    const c = capture();
+    const code = await main(
+      ["report", "overview", "--property", "222222222"],
+      { GA4_PROPERTY_ALLOWLIST: "111111111" },
+      c.streams,
+    );
+    expect(code).toBe(EXIT.BAD_INPUT);
+    expect(c.err.join("")).toContain("allowlist");
+    expect(c.err.join("")).not.toMatch(/Run doctor/);
+  });
+
+  it("exits 2 for a date range it could not read", async () => {
+    const c = capture();
+    const code = await main(
+      ["report", "overview", "--property", "123456789", "--range", "not a range"],
+      {},
+      c.streams,
+    );
+    expect(code).toBe(EXIT.BAD_INPUT);
+    expect(c.err.join("")).toContain("not a range");
+    expect(c.err.join("")).not.toMatch(/Run doctor/);
+  });
+
+  it("exits 2 for the privacy refusal, which never leaves the machine", async () => {
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", dimensions: "userId", property: "123456789" },
+    };
+    const { code, err } = await dispatchExitCode(parsed);
+    expect(code).toBe(EXIT.BAD_INPUT);
+    expect(err).toContain("identifies individual people");
+    expect(err).not.toMatch(/Run doctor/);
+  });
+});
+
 describe("query's --filter grammar: field:operator:value", () => {
   it("accepts a well-formed expression", async () => {
     // Runs through dispatch() with fakeRuntime(), not main(): fakeRuntime()

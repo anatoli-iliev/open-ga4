@@ -1,3 +1,5 @@
+import { Ga4Error } from "./errors.js";
+
 /**
  * Date range parsing.
  *
@@ -22,12 +24,33 @@ export type Ga4DateRange = {
   timezoneNote?: string;
 };
 
-export class DateRangeError extends Error {
-  constructor(input: string) {
+/**
+ * A date range this module could not read, or read as impossible.
+ *
+ * Extends Ga4Error, rather than a plain Error, for the same reason
+ * Ga4RequestError in src/ga4/limits.ts does (read the comment there; this is
+ * the same defect, found again in a second class that was not brought along
+ * with the first). A plain Error falls through diagnose() into the generic
+ * "UNEXPECTED" bucket, which carries the fix "Run doctor to check the setup"
+ * and the exit code for "Google refused". Parsing happens entirely on this
+ * machine and never touches a socket, so a mistyped range was being reported
+ * to somebody as Google turning them down, with a fix that could not help.
+ *
+ * INVALID_REQUEST, so it exits 2: name the value that was rejected and the
+ * forms that are accepted, and do not retry with a different guess.
+ */
+export class DateRangeError extends Ga4Error {
+  constructor(
+    input: string,
+    message = `Could not read "${input}" as a date range. Use a preset (today, yesterday, ` +
+      `last 7 days, last 28 days, last 30 days, last 90 days, this week, last week, this month, ` +
+      `last month, this year, last year), an explicit "YYYY-MM-DD..YYYY-MM-DD", or "N days".`,
+  ) {
     super(
-      `Could not read "${input}" as a date range. Use a preset (today, yesterday, last 7 days, ` +
-        `last 28 days, last 30 days, last 90 days, this week, last week, this month, last month, ` +
-        `this year, last year), an explicit "YYYY-MM-DD..YYYY-MM-DD", or "N days".`,
+      "INVALID_REQUEST",
+      message,
+      "This was read on this machine, before any request reached Google. Give a range in one of " +
+        "the forms named above and try again.",
     );
     this.name = "DateRangeError";
   }
@@ -71,7 +94,7 @@ export function parseDateRange(input: string, today: Date = new Date()): Ga4Date
   if (explicit) {
     const [, start, end] = explicit;
     if (start! > end!) {
-      throw new Error(`Date range starts after it ends: ${start} .. ${end}.`);
+      throw new DateRangeError(input, `Date range starts after it ends: ${start} .. ${end}.`);
     }
     return { startDate: start!, endDate: end!, label: `${start} to ${end}` };
   }
