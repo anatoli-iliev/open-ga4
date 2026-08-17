@@ -69,6 +69,45 @@ describe("setupStateFrom", () => {
     }
   });
 
+  it("attributes a refusal this machine made to this machine, not to Google", () => {
+    // An allowlist violation is INVALID_REQUEST, which has no bucket of its
+    // own, so it lands in "unknown". That bucket used to send everybody to
+    // Google Analytics, which is the wrong side of the wire for a list this
+    // skill enforces itself: nothing was ever sent. Keyed on the check id
+    // rather than the code, because Google's own HTTP 400 is INVALID_REQUEST
+    // too and that one really did come from Google.
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      {
+        id: "property_selection" as const,
+        label: "Property selection",
+        status: "fail" as const,
+        detail: "Property 222 is not in this skill's allowlist (111).",
+        code: "INVALID_REQUEST",
+      },
+    ]);
+    expect(state.blocked_on).toBe("unknown");
+    expect(state.next?.where).toBe("your environment");
+    expect(state.next?.action).toContain("Google was never asked");
+    expect(state.next?.action).toContain("allowlist");
+  });
+
+  it("still attributes an unrecognized failure from a live call to Google", () => {
+    // The same code, from the check that does reach Google.
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      {
+        id: "data_api_report" as const,
+        label: "Data API report",
+        status: "fail" as const,
+        detail: "Google Analytics rejected the query as invalid.",
+        code: "INVALID_REQUEST",
+      },
+    ]);
+    expect(state.next?.where).toBe("Google Analytics");
+    expect(state.next?.action).not.toContain("Google was never asked");
+  });
+
   it("tells the agent to report the message rather than guess a fix, for an unknown code", () => {
     const state = setupStateFrom([
       {

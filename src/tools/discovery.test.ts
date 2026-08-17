@@ -196,6 +196,45 @@ describe("runDiagnose", () => {
  * blocked_on: "ok", while every report 403s and exits 3, and SKILL.md sends
  * exit 3 straight back to doctor.
  */
+/**
+ * doctor is the one command whose failure text goes to **stdout** rather than
+ * stderr, inside the markdown checklist, and the same text is quoted again in
+ * `doctor --json`'s unknown bucket. Every stderr path redacts at the point of
+ * printing; these needed redacting at the point the check is built, or the
+ * three consumers each had to remember.
+ *
+ * It stopped being theoretical when PolicyError began extending Ga4Error:
+ * diagnose() hands a Ga4Error back unchanged, so those messages no longer pass
+ * through the redactText the old UNEXPECTED branch applied on the way past.
+ */
+describe("what doctor prints", () => {
+  const FAKE_KEY = "-----BEGIN PRIVATE KEY-----MIIEvQIBADANsecret-----END PRIVATE KEY-----";
+
+  it("redacts a credential out of a failing check, on stdout and in --json", async () => {
+    const { runtime } = stubRuntime({
+      summaries: SUMMARIES,
+      envOverrides: { GA4_PROPERTY_ID: FAKE_KEY },
+    });
+    const result = await runDiagnose(runtime, {});
+    const { checks } = result.details as { checks: Check[] };
+
+    expect(result.markdown).not.toContain("MIIEvQIBADANsecret");
+    expect(result.markdown).toContain("[redacted:private-key]");
+    expect(JSON.stringify(checks)).not.toContain("MIIEvQIBADANsecret");
+    // And again where setupStateFrom quotes the same detail back.
+    expect(JSON.stringify(setupStateFrom(checks))).not.toContain("MIIEvQIBADANsecret");
+  });
+
+  it("redacts the credentials line, which carries a path from the environment", async () => {
+    const { runtime } = stubRuntime({
+      summaries: SUMMARIES,
+      probes: [{ label: "GA4_CREDENTIALS (file)", path: FAKE_KEY, status: "used" }],
+    });
+    const result = await runDiagnose(runtime, {});
+    expect(result.markdown).not.toContain("MIIEvQIBADANsecret");
+  });
+});
+
 describe("which property doctor actually checks", () => {
   it("checks the configured one, not the first the credential happens to reach", async () => {
     const { runtime, client } = stubRuntime({
