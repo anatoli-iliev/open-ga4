@@ -42,9 +42,11 @@ take, so the packaging changed and the analytics core did not.
 - `fields`: searches the property's live metadata, so custom dimensions
   and metrics defined on that property are found without a skill update.
 - `properties`: every property the credential can read, with its numeric id.
-- `doctor`: ordered setup checks that stop at the first real failure and name
-  its fix. With `--json`, the single next thing the user must do, as a
-  `blocked_on` state with a link and the exact string to paste.
+- `doctor`: setup checks in dependency order, each naming its own fix. Only a
+  missing credential stops the run, because nothing after it can be checked
+  without one. With `--json`, the single next thing the user must do, as a
+  `blocked_on` state with a link and the exact string to paste, plus a
+  `warnings` array for anything worth saying that is blocking nothing.
 
 ### Privacy and security
 
@@ -82,6 +84,11 @@ take, so the packaging changed and the analytics core did not.
 - Zero runtime dependencies: no `dependencies`, no `peerDependencies`, and
   every import either relative or a `node:` builtin. OAuth assertions are
   signed with `node:crypto`; the API is called with `fetch`.
+- Exit codes are a contract, since an agent reads them to decide what to say:
+  0 worked, 1 an internal failure nothing can name, 2 bad input, 3 setup
+  unfinished, 4 Google refused. Everything checked before a connection is
+  opened, including the privacy refusals, exits 2, so a decision made on this
+  machine is never reported as Google's.
 - Errors are diagnosed from Google's machine-readable `status` and `reason`
   fields, never from its message prose. Clock skew is detected from the
   response `Date` header and reported as clock skew rather than as a bad
