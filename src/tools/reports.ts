@@ -4,7 +4,7 @@ import { parseDateRange, precedingRange, type Ga4DateRange } from "../ga4/dates.
 import { Ga4Error } from "../ga4/errors.js";
 import { formatReport } from "../ga4/format.js";
 import { buildFilters, type FilterCondition } from "../ga4/filters.js";
-import { applyRenames, assertRealtimeFields, assertWithinLimits, LIMITS } from "../ga4/limits.js";
+import { applyRenames, assertRealtimeFields, assertWithinLimits, Ga4RequestError, LIMITS } from "../ga4/limits.js";
 import { findPreset, PRESETS, PRESET_IDS } from "../ga4/presets.js";
 import { assertDimensionsAllowed, thresholdProneDimensions } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
@@ -100,6 +100,23 @@ function dateRangeOf(input: string | undefined, start?: string, end?: string): G
   if (start && end) {
     return parseDateRange(`${start}..${end}`);
   }
+  if (start || end) {
+    // Half a range used to fall through to the default 28 days, so a report
+    // asked for one period silently arrived measuring another, with a heading
+    // that named the period nobody asked about. That is the exact defect
+    // README.md holds against a competing project (a filter that parses and is
+    // then dropped, returning whole-site numbers with no error), and a wrong
+    // number that looks right is worse than a refusal.
+    const given = start ? "--start" : "--end";
+    const missing = start ? "--end" : "--start";
+    throw new Ga4RequestError(
+      "INCOMPLETE_DATE_RANGE",
+      `${given} was given without ${missing}, and a date range needs both ends. Nothing was ` +
+        `assumed for the other one: this report would otherwise have covered the default last ` +
+        `28 days rather than the period asked for. Give both, or use --range for a named period ` +
+        `such as "last 7 days".`,
+    );
+  }
   return parseDateRange(input ?? "last 28 days");
 }
 
@@ -118,12 +135,17 @@ export async function runReport(
   params: ReportParams,
   signal?: AbortSignal,
 ): Promise<ReportOutcome> {
+  // `kind`, not merely "a preset with this id exists". findPreset searches
+  // every preset, realtime ones included, so `report realtime_now` used to
+  // build a 28-day report and head it "who is on the site right now": an
+  // answer to a question nobody asked, labelled as the answer to the one they
+  // did. runRealtime has always checked this in the other direction.
   const preset = findPreset(params.report);
-  if (!preset) {
+  if (!preset || preset.kind !== "core") {
     throw new Ga4Error(
       "INVALID_REQUEST",
       `Unknown report "${params.report}".`,
-      `Available: ${CORE_PRESETS.join(", ")}.`,
+      `Available: ${CORE_PRESETS.join(", ")}. For ${REALTIME_PRESETS.join(" or ")}, use live.`,
     );
   }
 
@@ -199,12 +221,16 @@ export async function runCompare(
   params: CompareParams,
   signal?: AbortSignal,
 ): Promise<ReportOutcome> {
+  // Same check as runReport, and for the same reason: comparing "who is on the
+  // site right now" against the 28 days before it is not a thing realtime data
+  // can answer.
   const preset = findPreset(params.report);
-  if (!preset) {
+  if (!preset || preset.kind !== "core") {
     throw new Ga4Error(
       "INVALID_REQUEST",
       `Unknown report "${params.report}".`,
-      `Available: ${CORE_PRESETS.join(", ")}.`,
+      `Available: ${CORE_PRESETS.join(", ")}. Realtime data covers about 30 minutes, so there ` +
+        `is no period to compare it with.`,
     );
   }
 

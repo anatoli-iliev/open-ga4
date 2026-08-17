@@ -157,6 +157,28 @@ describe("the report command", () => {
     });
   });
 
+  it.each(["realtime_now", "realtime_pages", "realtime_events"])(
+    "refuses the realtime preset %s instead of reporting 28 days under its title",
+    async (id) => {
+      // findPreset searches every preset, so a realtime id used to build a
+      // 28-day report headed "who is on the site right now": an answer to a
+      // question nobody asked, wearing the label of the one they did.
+      const { runtime, calls } = stubRuntime(SAMPLE);
+      await expect(runReport(runtime, { report: id })).rejects.toThrow(/Unknown report/);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it("points at live rather than only listing what report accepts", async () => {
+    // The fix line, not the message: an agent that asked for realtime data
+    // needs the command that has it, not just the list that does not.
+    const { runtime } = stubRuntime(SAMPLE);
+    await expect(runReport(runtime, { report: "realtime_now" })).rejects.toMatchObject({
+      code: "INVALID_REQUEST",
+      fix: expect.stringContaining("use live"),
+    });
+  });
+
   it("refuses a property outside the allowlist without calling Google", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE, {
       GA4_PROPERTY_ALLOWLIST: "555000111",
@@ -184,6 +206,52 @@ describe("the compare command", () => {
     const { runtime } = stubRuntime(SAMPLE);
     const result = await runCompare(runtime, { report: "channels" });
     expect(result.markdown).toMatch(/Comparing last 28 days against the previous 28 days/);
+  });
+
+  it("refuses a realtime preset, which has no previous period to compare against", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(runCompare(runtime, { report: "realtime_now" })).rejects.toThrow(/Unknown report/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+/**
+ * A range given as one date and no other used to fall through to the default
+ * last 28 days: the report ran, the heading named 28 days, and nobody was told
+ * the dates they gave had been dropped. README.md holds exactly this against a
+ * competing project, where a filter parses and is then never applied.
+ */
+describe("half a date range", () => {
+  it.each([
+    ["start_date", { start_date: "2026-01-01" }],
+    ["end_date", { end_date: "2026-01-31" }],
+  ])("refuses %s on its own rather than quietly using the default period", async (_name, params) => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(runReport(runtime, { report: "top_pages", ...params })).rejects.toThrow(
+      /date range needs both ends/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("names the flag that is missing, not just the one that was given", async () => {
+    const { runtime } = stubRuntime(SAMPLE);
+    await expect(runReport(runtime, { report: "top_pages", start_date: "2026-01-01" })).rejects
+      .toThrow(/--start was given without --end/);
+  });
+
+  it("refuses it on query as well, which takes the same two flags", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await expect(runQuery(runtime, { metrics: ["sessions"], end_date: "2026-01-31" })).rejects
+      .toThrow(/--end was given without --start/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("still accepts both together", async () => {
+    const { runtime, calls } = stubRuntime(SAMPLE);
+    await runReport(runtime, { report: "top_pages", start_date: "2026-01-01", end_date: "2026-01-31" });
+    expect(calls[0]!.request.dateRanges).toEqual([
+      { startDate: "2026-01-01", endDate: "2026-01-31" },
+    ]);
   });
 });
 

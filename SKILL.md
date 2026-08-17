@@ -442,7 +442,7 @@ For any of those, run a normal report over a recent range instead.
 | --- | --- | --- |
 | `--property` | report, compare, live, query, fields | Numeric property id, overriding `GA4_PROPERTY_ID` for this one command. |
 | `--range` | report, compare, query | A date range from the table below. Default: the last 28 days. |
-| `--start` / `--end` | report, query | `YYYY-MM-DD` each, used together instead of `--range`. Not available on compare. |
+| `--start` / `--end` | report, query | `YYYY-MM-DD` each, used together instead of `--range`. One without the other is an error, not half a range. Not available on compare. |
 | `--limit` | report, compare, live, query | Rows returned. Defaults: 25 for query, the preset's own row count capped at 100 for report, 10 for compare, 20 for live. Maximum 1000. |
 | `--filter` | report, query | **Two different things. See below.** |
 | `--sort` | query | A metric name to sort by, descending. Falls back to a dimension name. |
