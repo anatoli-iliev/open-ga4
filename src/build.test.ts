@@ -124,4 +124,93 @@ describe(".clawhubignore, which decides what is published", () => {
       }
     }
   });
+
+  /**
+   * `.gitignore` and `.clawhubignore` answer two different questions, and only
+   * one of them decides what leaves the machine.
+   *
+   * `.gitignore` excludes `*.pem`, `*.key`, `*-key.json`,
+   * `*service-account*.json`, gcloud's application-default credentials file and
+   * `.env*`, under a comment saying the block exists so an accidental
+   * `git add .` cannot leak a Google service-account key. `.clawhubignore`
+   * repeated none of them, while its own header argues that exclusions must be
+   * named explicitly rather than assumed.
+   *
+   * Nothing is exposed by that today: no file matching those patterns is in the
+   * repository, and the release workflow publishes a clean CI checkout. It
+   * matters for the local form the header of `.clawhubignore` documents,
+   * `clawhub skill publish "$PWD"`, which uploads whatever working tree it is
+   * pointed at. A key file dropped in the checkout during setup or while
+   * reproducing a bug is exactly the case where git refuses the commit and the
+   * registry takes the upload.
+   *
+   * Derived from `.gitignore` rather than listed here, because a list is a
+   * second place to forget: adding `*.p12` to that block and not to
+   * `.clawhubignore` fails this. Two deliberate costs come with deriving it.
+   * Anything else appended to that block of `.gitignore` has to be considered
+   * for the bundle too, which is the decision this test exists to force rather
+   * than a false alarm. And the block is found by the wording of the comment
+   * above it, so rewording that comment fails this test: the message says so,
+   * and the fix is to keep the phrase or to change it here as well.
+   */
+  describe("agrees with .gitignore about credentials", () => {
+    /**
+     * The patterns in `.gitignore`'s credential block: from the comment that
+     * introduces it to the next blank line, comments dropped. Negations
+     * (`!.env.example`) are dropped as well, since a negation re-includes a
+     * file rather than excluding one, and `.clawhubignore` documents why it
+     * does not mirror that line.
+     */
+    function gitignoreCredentialPatterns(): string[] {
+      const lines = readFileSync(path.join(repoRoot, ".gitignore"), "utf8").split("\n");
+      const start = lines.findIndex((line) => line.includes("Never commit credentials"));
+      expect(start, ".gitignore has no credential block to compare against").toBeGreaterThan(-1);
+      const collected: string[] = [];
+      for (const line of lines.slice(start + 1)) {
+        const trimmed = line.trim();
+        if (trimmed === "") break;
+        if (trimmed.startsWith("#")) continue;
+        if (trimmed.startsWith("!")) continue;
+        collected.push(trimmed);
+      }
+      return collected;
+    }
+
+    it("reads a credential block out of .gitignore that is worth comparing", () => {
+      // A parser that silently matched nothing would make the test below pass
+      // forever, which is the failure mode of every test that derives its
+      // expectations from a file.
+      const found = gitignoreCredentialPatterns();
+      expect(found.length).toBeGreaterThan(4);
+      for (const shape of ["*.pem", "*service-account*.json", ".env"]) {
+        expect(found, `.gitignore's credential block should still exclude ${shape}`).toContain(shape);
+      }
+    });
+
+    it("excludes every pattern .gitignore excludes as a credential", () => {
+      const missing = gitignoreCredentialPatterns().filter((pattern) => !patterns().includes(pattern));
+      expect(missing, "these are kept out of git but would still be published").toEqual([]);
+    });
+  });
+
+  /**
+   * `.github/publish/` holds the pinned install of the ClawHub publisher: a
+   * `package.json` and a committed `package-lock.json` so the step that holds
+   * the release credential runs a recorded dependency tree rather than one
+   * resolved at release time. It is release tooling, so it stays out of the
+   * bundle, and `npm ci` there puts a second `node_modules` in the directory
+   * being published.
+   *
+   * Both are already covered, by `.github/` and by `node_modules/`. This exists
+   * so narrowing `.github/` to `.github/workflows/` some day, which looks like a
+   * harmless tightening, cannot quietly start shipping them.
+   */
+  it("excludes the release publisher's pinned install", () => {
+    for (const file of [".github/publish/package.json", ".github/publish/package-lock.json"]) {
+      const covering = patterns().filter((pattern) => pattern.endsWith("/") && file.startsWith(pattern));
+      expect(covering, `${file} is release tooling and must not be published`).not.toEqual([]);
+    }
+    expect(patterns(), "npm ci in .github/publish/ creates a second node_modules")
+      .toContain("node_modules/");
+  });
 });
