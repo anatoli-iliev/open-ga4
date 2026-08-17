@@ -2,15 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 import { configFromEnv } from "../config.js";
 import type { CredentialProbe } from "../auth/credentials.js";
 import type { AccountSummary, Ga4Client, MetadataResponse, RunReportResponse } from "../ga4/client.js";
+import { Ga4HttpError } from "../ga4/http.js";
 import { assertPropertyAllowed, normalizePropertyId } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
-import { runDiagnose, runFields, runProperties } from "./discovery.js";
+import { setupStateFrom } from "../setup/state.js";
+import { runDiagnose, runFields, runProperties, type Check } from "./discovery.js";
 
 type StubOptions = {
   envOverrides?: Parameters<typeof configFromEnv>[0];
   summaries?: AccountSummary[];
   summariesError?: Error;
   reportResponse?: RunReportResponse;
+  /** An Error for every property, or one chosen by which property was asked for. */
+  reportError?: Error | ((propertyId: string) => Error | undefined);
   metadata?: MetadataResponse;
   clientError?: Error;
   probes?: CredentialProbe[];
@@ -26,7 +30,16 @@ function stubRuntime(options: StubOptions = {}): { runtime: Ga4Runtime; client: 
       }
       return options.summaries ?? [];
     }),
-    runReport: vi.fn(async () => options.reportResponse ?? {}),
+    runReport: vi.fn(async (propertyId: string) => {
+      const error =
+        typeof options.reportError === "function"
+          ? options.reportError(propertyId)
+          : options.reportError;
+      if (error) {
+        throw error;
+      }
+      return options.reportResponse ?? {};
+    }),
   } as unknown as Ga4Client;
 
   const runtime: Ga4Runtime = {
@@ -167,5 +180,94 @@ describe("runDiagnose", () => {
     const { runtime } = stubRuntime({ summaries: SUMMARIES });
     const result = await runDiagnose(runtime, {});
     expect((result.details as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+/**
+ * doctor's job is to answer "will a report work", not "does some property
+ * work". It used to answer the second question: `properties[0]?.id` was
+ * passed to resolveProperty, which only falls back to the configured default
+ * when its argument is undefined, so GA4_PROPERTY_ID was never validated
+ * whenever the Admin API returned anything at all.
+ *
+ * The consequence is the loop the whole setup state machine exists to
+ * prevent. If the Analytics grant went to a different property than the one
+ * configured, doctor tested the granted one, passed, and reported
+ * blocked_on: "ok", while every report 403s and exits 3, and SKILL.md sends
+ * exit 3 straight back to doctor.
+ */
+describe("which property doctor actually checks", () => {
+  it("checks the configured one, not the first the credential happens to reach", async () => {
+    const { runtime, client } = stubRuntime({
+      summaries: SUMMARIES,
+      envOverrides: { GA4_PROPERTY_ID: "999888777" },
+    });
+    const result = await runDiagnose(runtime, {});
+
+    expect(client.runReport).toHaveBeenCalledWith(
+      "999888777",
+      expect.anything(),
+      undefined,
+    );
+    expect(result.markdown).toContain("property 999888777 returned");
+  });
+
+  it("lets an explicit property_id still win over the configured one", async () => {
+    const { runtime, client } = stubRuntime({
+      summaries: SUMMARIES,
+      envOverrides: { GA4_PROPERTY_ID: "999888777" },
+    });
+    await runDiagnose(runtime, { property_id: "444555666" });
+    expect(client.runReport).toHaveBeenCalledWith("444555666", expect.anything(), undefined);
+  });
+
+  it("falls back to the first readable property when nothing is configured", async () => {
+    // The case properties[0] was written for: no default set yet, so any
+    // readable property proves the Data API responds.
+    const { runtime, client } = stubRuntime({
+      summaries: SUMMARIES,
+      envOverrides: { GA4_PROPERTY_ID: "" },
+    });
+    await runDiagnose(runtime, {});
+    expect(client.runReport).toHaveBeenCalledWith("111222333", expect.anything(), undefined);
+  });
+
+  it("fails on a measurement id in GA4_PROPERTY_ID instead of passing on someone else's property", async () => {
+    // Reaches blocked_on: "wrong_property", the setup step written for this
+    // exact mistake, which was unreachable while doctor validated a property
+    // the user never configured.
+    const { runtime, client } = stubRuntime({
+      summaries: SUMMARIES,
+      envOverrides: { GA4_PROPERTY_ID: "G-ABC12345" },
+    });
+    const result = await runDiagnose(runtime, {});
+    const { ok, checks } = result.details as { ok: boolean; checks: Check[] };
+
+    expect(ok).toBe(false);
+    expect(client.runReport).not.toHaveBeenCalled();
+    const selection = checks.find((check) => check.id === "property_selection");
+    expect(selection?.status).toBe("fail");
+    expect(selection?.code).toBe("PROPERTY_NOT_FOUND");
+    expect(setupStateFrom(checks).blocked_on).toBe("wrong_property");
+  });
+
+  it("reports a grant that went to a different property than the configured one", async () => {
+    // The credential can read 111222333 but the user configured 999888777,
+    // which 403s. doctor used to test the readable one, pass, and report
+    // blocked_on: "ok" while every report exited 3, which SKILL.md sends
+    // straight back to doctor: a loop with no way out.
+    const { runtime } = stubRuntime({
+      summaries: SUMMARIES,
+      envOverrides: { GA4_PROPERTY_ID: "999888777" },
+      reportError: (propertyId) =>
+        propertyId === "999888777"
+          ? new Ga4HttpError(403, { error: { status: "PERMISSION_DENIED" } }, "Forbidden")
+          : undefined,
+    });
+    const result = await runDiagnose(runtime, {});
+    const { ok, checks } = result.details as { ok: boolean; checks: Check[] };
+
+    expect(ok).toBe(false);
+    expect(setupStateFrom(checks).blocked_on).toBe("no_property_grant");
   });
 });
