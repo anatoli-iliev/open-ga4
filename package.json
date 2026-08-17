@@ -4,7 +4,7 @@
   "description": "Open GA4: read-only, privacy-respecting Google Analytics 4 answers for an OpenClaw agent.",
   "keywords": [
     "openclaw",
-    "openclaw-plugin",
+    "openclaw-skill",
     "google-analytics",
     "ga4",
     "analytics",
