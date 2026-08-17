@@ -41,7 +41,8 @@ export type FormattedReport = {
    * already happened before this is built: this is not a second, separate
    * path back to a raw cell. Newlines are flattened for the same reason the
    * markdown table's cells are (see flattenNewlines below), which happens
-   * upstream of both, in `body`, so the two cannot drift apart.
+   * upstream of both, in `body` and `headers`, so the two cannot drift apart.
+   * Every cell and every key, dimensions, metrics and headers alike.
    */
   rows: Array<Record<string, string>>;
   /**
@@ -121,9 +122,15 @@ function formatDuration(seconds: number): string {
  * of whether the surrounding document is markdown or JSON. JSON's own
  * escaping keeps the document structurally valid either way; it does not by
  * itself stop injected text from reading as its own line once a model
- * attends to it. Applied once, upstream in `body` below, so both channels
- * share this single pass rather than each doing (or forgetting to do) their
- * own.
+ * attends to it. Applied once, upstream in `body` and `headers` below, so both
+ * channels share this single pass rather than each doing (or forgetting to do)
+ * their own. Every cell, not only the dimension ones: a metric cell is a
+ * number in practice, but formatMetric returns its input verbatim when
+ * Number(raw) is not finite, and a header is our own request echoed back, so
+ * both were relying on an expectation about the response rather than on this
+ * function. tableCell below flattens again on the markdown side, which is
+ * belt and braces rather than the same thing twice: this pass is what the JSON
+ * `rows` field gets.
  *
  * Exported for the one place a value reaches text *outside* the fenced block:
  * the caveat line saying what a report was filtered to, which interpolates a
@@ -303,13 +310,30 @@ export function formatReport(
       // drift apart the way one of them forgetting to flatten would.
       return flattenNewlines(result.value);
     });
+    // Flattened as well, though a metric is a number. formatMetric returns its
+    // input verbatim when Number(raw) is not finite, so "a metric cell is
+    // numeric" is an assumption about Google's response rather than something
+    // this code enforces, and the comment on flattenNewlines above says every
+    // cell on both channels is flattened. Making that true costs one call; a
+    // metric that is already a number is unchanged by it. The markdown table
+    // flattens again via tableCell, which is why this line is about the JSON
+    // `rows` field: that is the channel this one pass covers.
     const metricCells = (row.metricValues ?? []).map((cell, index) =>
-      formatMetric(cell.value, metricHeaders[index]?.type, metricHeaders[index]?.name ?? "", currency),
+      flattenNewlines(
+        formatMetric(cell.value, metricHeaders[index]?.type, metricHeaders[index]?.name ?? "", currency),
+      ),
     );
     return [...dimensionCells, ...metricCells];
   });
 
-  const headers = [...dimensionHeaders, ...metricHeaders.map((header) => header.name ?? "")];
+  // Headers too, for the same reason: they are an echo of the field names this
+  // skill asked for, so nothing untrusted is expected in them, but they are
+  // keys in the JSON `rows` objects and cells in the markdown table, and "every
+  // cell is flattened" should not have an exception that rests on an
+  // expectation about a response.
+  const headers = [...dimensionHeaders, ...metricHeaders.map((header) => header.name ?? "")].map(
+    flattenNewlines,
+  );
 
   const caveats = [...(options.notes ?? []), ...caveatsFor(response.metadata, hasCurrencyMetric)];
   if (!options.redaction.enabled) {

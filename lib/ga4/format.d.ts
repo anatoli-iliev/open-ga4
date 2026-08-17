@@ -38,7 +38,8 @@ export type FormattedReport = {
      * already happened before this is built: this is not a second, separate
      * path back to a raw cell. Newlines are flattened for the same reason the
      * markdown table's cells are (see flattenNewlines below), which happens
-     * upstream of both, in `body`, so the two cannot drift apart.
+     * upstream of both, in `body` and `headers`, so the two cannot drift apart.
+     * Every cell and every key, dimensions, metrics and headers alike.
      */
     rows: Array<Record<string, string>>;
     /**
@@ -60,9 +61,15 @@ export type FormattedReport = {
  * of whether the surrounding document is markdown or JSON. JSON's own
  * escaping keeps the document structurally valid either way; it does not by
  * itself stop injected text from reading as its own line once a model
- * attends to it. Applied once, upstream in `body` below, so both channels
- * share this single pass rather than each doing (or forgetting to do) their
- * own.
+ * attends to it. Applied once, upstream in `body` and `headers` below, so both
+ * channels share this single pass rather than each doing (or forgetting to do)
+ * their own. Every cell, not only the dimension ones: a metric cell is a
+ * number in practice, but formatMetric returns its input verbatim when
+ * Number(raw) is not finite, and a header is our own request echoed back, so
+ * both were relying on an expectation about the response rather than on this
+ * function. tableCell below flattens again on the markdown side, which is
+ * belt and braces rather than the same thing twice: this pass is what the JSON
+ * `rows` field gets.
  *
  * Exported for the one place a value reaches text *outside* the fenced block:
  * the caveat line saying what a report was filtered to, which interpolates a
