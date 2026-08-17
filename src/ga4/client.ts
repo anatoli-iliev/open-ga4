@@ -205,29 +205,6 @@ export function createGa4Client(options: Ga4ClientOptions) {
       })) as MetadataResponse;
     },
 
-    /**
-     * Ask Google which of these fields cannot be combined, rather than guessing
-     * from a rejected request's prose.
-     */
-    async checkCompatibility(
-      propertyId: string,
-      request: {
-        dimensions?: Array<{ name: string }>;
-        metrics?: Array<{ name: string }>;
-        compatibilityFilter?: "COMPATIBLE" | "INCOMPATIBLE";
-      },
-      signal?: AbortSignal,
-    ): Promise<{
-      dimensionCompatibilities?: Array<{ dimensionMetadata?: FieldMetadata; compatibility?: string }>;
-      metricCompatibilities?: Array<{ metricMetadata?: FieldMetadata; compatibility?: string }>;
-    }> {
-      return (await call(
-        `${DATA_API}/properties/${propertyId}:checkCompatibility`,
-        request,
-        signal,
-      )) as never;
-    },
-
     /** Every property this credential can read, so nobody has to hunt for an id. */
     async listAccountSummaries(signal?: AbortSignal): Promise<AccountSummary[]> {
       const summaries: AccountSummary[] = [];

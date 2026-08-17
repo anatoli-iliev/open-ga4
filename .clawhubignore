@@ -1,0 +1,58 @@
+# What does NOT go into the published skill bundle.
+#
+# The rule this file follows: everything needed to run the skill, and to read
+# it, ships; everything that only exists to develop it does not.
+#
+# **The test suite ships to be read, not to be run.** src/ is deliberately
+# absent from this file, tests included, because the auditability claim is the
+# product: README.md, PRIVACY.md and SECURITY.md all invite a reader to check
+# the guarantees in the code, src/privacy/surface.test.ts is the artifact that
+# proves the privacy claims rather than asserting them, and ClawHub's security
+# review reads the shipped code. Shipping the source next to the lib/ built
+# from it is what makes those two comparable.
+#
+# But an installed copy cannot run `npm test`, and that is a deliberate
+# trade rather than an oversight: vitest.config.ts, scripts/ and .github/ are
+# excluded below, and two of the shipped tests read paths that are excluded
+# anyway (src/docs.test.ts reads .github/CODEOWNERS, src/cli/shim.test.ts
+# reads scripts/build-lib.mjs). Anyone who wants to run the suite clones the
+# repository and runs `npm install`, which is CONTRIBUTING.md's first step.
+# Shipping the several files that would make an installed copy runnable buys a
+# workflow nobody uses, on top of a devDependency the bundle does not carry.
+#
+# lib/ ships because it is what actually runs.
+#
+# Verify a change here with:
+#   clawhub skill publish "$PWD" --slug open-ga4 --name "Open GA4" \
+#     --version 0.1.0 --dry-run --json
+# and read fileCount. --dry-run publishes nothing.
+
+# Dependencies and version control. Named explicitly rather than assumed:
+# .github/workflows/release.yml publishes after `npm ci`, so node_modules is
+# present in the directory being published, and whether the publisher happens
+# to skip it is not something this repository controls or tests.
+node_modules/
+.git/
+package-lock.json
+
+# Build and test configuration. The skill runs from lib/, which is committed;
+# nothing in the installed folder compiles or runs a test suite.
+tsconfig.json
+tsconfig.check.json
+vitest.config.ts
+scripts/
+
+# Repository automation and local working state. CI, Dependabot and the
+# release workflow describe how this repository is maintained, not what the
+# skill does. .superpowers/ and .sandbox/ are working directories.
+.github/
+.superpowers/
+.sandbox/
+
+# The plans and specs for building the skill, as opposed to the design record
+# for the skill itself. docs/DESIGN.md ships and these do not, the same split
+# src/testing/files.test-support.ts already makes for the documentation tests:
+# these describe what was rejected and what changed on the way here, which is
+# repository history rather than anything a user or a reviewer of the skill
+# needs.
+docs/superpowers/

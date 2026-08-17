@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { COMMANDS, KNOWN_FLAGS, parseArgs } from "../cli/args.js";
+import { EXIT } from "../cli/exit.js";
+import { parseDateRange } from "../ga4/dates.js";
 import { BLOCKED_ON_VALUES } from "../setup/state.js";
 import { environmentVariablesRead, repoRoot } from "../testing/files.test-support.js";
 
@@ -294,7 +296,7 @@ describe("SKILL.md environment variables", () => {
     expect(declared).toEqual(environmentVariablesRead());
   });
 
-  it("declares the eight the design spec settled on", () => {
+  it("declares the same set the design spec settled on", () => {
     const spec = readFileSync(
       path.join(repoRoot, "docs/superpowers/specs/2026-08-16-open-ga4-design.md"),
       "utf8",
@@ -303,7 +305,12 @@ describe("SKILL.md environment variables", () => {
     const inSpec = new Set(
       [...frontmatterBlock.matchAll(/- name: ([A-Z0-9_]+)/g)].map((match) => match[1]!),
     );
-    expect(inSpec.size).toBe(8);
+    // The count is asserted from the spec rather than written here, so a
+    // variable added or removed has one place to change, not two. NO_COLOR was
+    // the eighth until the final review: nothing shipped emits an escape
+    // sequence, and the one function that read it had no caller, so it was a
+    // setting the manifest invited a user to set that could not do anything.
+    expect(inSpec.size).toBeGreaterThan(0);
     expect(declared).toEqual(inSpec);
 
     // The rest of the spec's frontmatter block is a worked example of the file
@@ -335,7 +342,63 @@ describe("SKILL.md environment variables", () => {
   });
 });
 
+describe("SKILL.md date ranges", () => {
+  /**
+   * Which ranges run up to today is a fact both SKILL.md and README.md have
+   * described, and README.md got it wrong: it called `live` "the only command
+   * that sees today" while four ranges end on today and any command taking
+   * `--range` can use them. Pinned against the parser rather than re-read by a
+   * human, so the sentence cannot outlive the behaviour.
+   */
+  const RANGES = [
+    "today",
+    "yesterday",
+    "last 7 days",
+    "last 28 days",
+    "last 30 days",
+    "last 90 days",
+    "this week",
+    "last week",
+    "this month",
+    "last month",
+    "this year",
+    "last year",
+  ];
+
+  it("documents every range the parser accepts", () => {
+    const section_ = section(SKILL, "### Date ranges");
+    for (const range of RANGES) {
+      expect(section_, `the date-range section should name ${range}`).toContain(`\`${range}\``);
+    }
+  });
+
+  it("names the ranges that run up to today, and only those", () => {
+    const today = new Date("2026-08-12T09:30:00Z");
+    const endingToday = RANGES.filter((range) => parseDateRange(range, today).endDate === "today");
+    expect(endingToday).toEqual(["today", "this week", "this month", "this year"]);
+
+    const section_ = section(SKILL, "### Date ranges");
+    for (const range of endingToday) {
+      expect(section_, `${range} runs up to today and the section should say so`)
+        .toMatch(new RegExp(`\`${range}\``));
+    }
+    expect(section_).toMatch(/run up to today|so far/);
+  });
+});
+
 describe("SKILL.md guidance", () => {
+  it("documents exactly the exit codes the CLI can return", () => {
+    // Both directions. A code in the table that the CLI cannot return is a
+    // promise about behaviour that does not exist (exit 1 was exactly that
+    // until UNEXPECTED stopped being folded into "Google refused"), and a code
+    // the CLI can return with no row here leaves the agent guessing at the
+    // moment it most needs an instruction. src/cli/exit.test.ts asserts the
+    // other half: that exitCodeFor can actually produce each of these.
+    const table = section(SKILL, "## Exit codes");
+    const documented = new Set([...table.matchAll(/^\| (\d+) \|/gm)].map((match) => Number(match[1])));
+    expect(documented).toEqual(new Set(Object.values(EXIT)));
+  });
+
   it("tells the agent that zero rows is exit 0 and not a failure", () => {
     const exitCodes = section(SKILL, "## Exit codes");
     expect(exitCodes).toMatch(/zero rows/i);

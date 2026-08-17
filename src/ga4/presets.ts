@@ -224,15 +224,6 @@ export const PRESETS: readonly Preset[] = [
   },
 ];
 
-export const PRESET_IDS = PRESETS.map((preset) => preset.id);
-
 export function findPreset(id: string): Preset | undefined {
   return PRESETS.find((preset) => preset.id === id);
-}
-
-/** One line per preset, for the tool description the model reads. */
-export function describePresets(kind?: Preset["kind"]): string {
-  return PRESETS.filter((preset) => !kind || preset.kind === kind)
-    .map((preset) => `${preset.id}: ${preset.intent}`)
-    .join("\n");
 }

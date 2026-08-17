@@ -69,6 +69,45 @@ describe("setupStateFrom", () => {
     }
   });
 
+  it("attributes a refusal this machine made to this machine, not to Google", () => {
+    // An allowlist violation is INVALID_REQUEST, which has no bucket of its
+    // own, so it lands in "unknown". That bucket used to send everybody to
+    // Google Analytics, which is the wrong side of the wire for a list this
+    // skill enforces itself: nothing was ever sent. Keyed on the check id
+    // rather than the code, because Google's own HTTP 400 is INVALID_REQUEST
+    // too and that one really did come from Google.
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      {
+        id: "property_selection" as const,
+        label: "Property selection",
+        status: "fail" as const,
+        detail: "Property 222 is not in this skill's allowlist (111).",
+        code: "INVALID_REQUEST",
+      },
+    ]);
+    expect(state.blocked_on).toBe("unknown");
+    expect(state.next?.where).toBe("your environment");
+    expect(state.next?.action).toContain("Google was never asked");
+    expect(state.next?.action).toContain("allowlist");
+  });
+
+  it("still attributes an unrecognized failure from a live call to Google", () => {
+    // The same code, from the check that does reach Google.
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      {
+        id: "data_api_report" as const,
+        label: "Data API report",
+        status: "fail" as const,
+        detail: "Google Analytics rejected the query as invalid.",
+        code: "INVALID_REQUEST",
+      },
+    ]);
+    expect(state.next?.where).toBe("Google Analytics");
+    expect(state.next?.action).not.toContain("Google was never asked");
+  });
+
   it("tells the agent to report the message rather than guess a fix, for an unknown code", () => {
     const state = setupStateFrom([
       {
@@ -124,6 +163,53 @@ describe("setupStateFrom", () => {
     ]);
     expect(state.ok).toBe(true);
     expect(state.blocked_on).toBe("ok");
+  });
+
+  it("still says so, in warnings, rather than reporting a clean bill of health", () => {
+    // Not blocking is not the same as not worth saying. This JSON is the only
+    // thing an agent reads on this command, and while a failing check with no
+    // code was skipped outright, `doctor --json` answered "ok: true" for a
+    // setup that sends unredacted personal data to a model provider. The
+    // markdown checklist said it; the channel the agent actually uses did not.
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      pass("data_api_report", "Data API report"),
+      {
+        id: "privacy_settings" as const,
+        label: "Privacy settings",
+        status: "fail" as const,
+        detail: "redaction is turned OFF",
+        fix: "Unset the GA4_REDACT environment variable.",
+      },
+    ]);
+    expect(state.blocked_on).toBe("ok");
+    expect(state.warnings).toEqual(["redaction is turned OFF Unset the GA4_REDACT environment variable."]);
+  });
+
+  it("carries a warning alongside a blocking step too, rather than losing it", () => {
+    // A shape runDiagnose really produces: credentials load, the Admin API is
+    // off, and the privacy check still runs and still fails. (A *credentials*
+    // failure could not be paired with it, because that one returns before the
+    // privacy check is ever appended.)
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      fail("admin_api", "Admin API and property access", "ADMIN_API_DISABLED"),
+      fail("property_selection", "Property selection", "NO_PROPERTY"),
+      {
+        id: "privacy_settings" as const,
+        label: "Privacy settings",
+        status: "fail" as const,
+        detail: "redaction is turned OFF",
+      },
+    ]);
+    expect(state.blocked_on).toBe("admin_api_disabled");
+    expect(state.warnings).toEqual(["redaction is turned OFF"]);
+  });
+
+  it("omits warnings entirely when there is nothing to warn about", () => {
+    const state = setupStateFrom([pass("credentials", "Google credentials")]);
+    expect(state.warnings).toBeUndefined();
+    expect(JSON.stringify(state)).not.toContain("warnings");
   });
 
   it("keeps only the service-account address, nothing else from the credential, in the JSON", () => {

@@ -17,8 +17,8 @@ cd open-ga4
 npm install
 ```
 
-Node 22 or newer. The HTTP layer uses `AbortSignal.any` and `AbortSignal.timeout`, and the
-package is native ESM throughout.
+Node 22.22.3 or newer, the floor `package.json`'s `engines.node` sets. The HTTP layer uses
+`AbortSignal.any` and `AbortSignal.timeout`, and the package is native ESM throughout.
 
 There are **zero runtime dependencies**. `package.json` has no `dependencies` and no
 `peerDependencies`, and every import in `src/` is either relative or `node:`-prefixed. That
@@ -101,7 +101,8 @@ README is worth nothing on its own. Each one is checked against the built bundle
 | Never calls `properties.audienceExports`, `properties.audienceLists` or the Admin API's `runAccessReport`, the three surfaces built to return rows keyed to an individual visitor | those methods are not implemented in the client | `src/privacy/surface.test.ts` asserts the strings are absent from `lib/` |
 | Writes no report data to disk | nothing outside the optional audit log opens a file for writing | `src/privacy/surface.test.ts` scans `lib/` for `writeFile`, `appendFile`, `createWriteStream`, `mkdir` |
 | Blocks person-identifying dimensions unless opted in | `assertDimensionsAllowed` in `src/privacy/policy.ts` | `src/privacy/policy.test.ts` |
-| Redacts identifiers out of dimension values | `redactText` in `src/privacy/redact.ts` | `src/privacy/redact.test.ts` |
+| Redacts identifiers out of dimension values, unless `GA4_REDACT` turns it off | `redactValue` in `src/privacy/redact.ts` | `src/privacy/redact.test.ts` |
+| Keeps a credential out of any error message it prints, always | `redactText` in `src/privacy/redact.ts` | `src/privacy/redact.test.ts` |
 
 So:
 

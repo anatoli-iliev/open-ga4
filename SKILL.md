@@ -29,9 +29,6 @@ metadata:
         description: >-
           Google's standard variable, read as a fallback so an existing gcloud
           setup keeps working.
-      - name: NO_COLOR
-        required: false
-        description: Set to any value to disable coloured output.
       - name: GA4_REDACT
         required: false
         description: >-
@@ -145,10 +142,16 @@ Hand the user one step at a time. Somebody given five simultaneous problems does
 nothing; somebody given one does it. `next.action` and `next.paste` are written to be
 read aloud, so prefer them over paraphrasing.
 
+A `warnings` array appears when something is worth saying but is blocking nothing, so
+it can accompany any `blocked_on`, including `ok`. Today it means redaction has been
+turned off. Say it: the person reading your answer is not necessarily the person who
+set that variable.
+
 ### blocked_on: `ok`
 
 Setup is complete. Say so in one line and go straight to answering the question they
-actually asked. Do not read the rest of this section to them.
+actually asked. Do not read the rest of this section to them. If `warnings` is present,
+say that line too, then carry on.
 
 ### blocked_on: `no_credentials`
 
@@ -353,14 +356,18 @@ useful answer than its checklist, which is why the setup tree above is keyed on 
 | Code | Means | Say |
 | --- | --- | --- |
 | 0 | Worked | The answer. A table with **zero rows also exits 0**: that is "no data for that period", a successful measurement of nothing, never a failure. |
-| 1 | Unexpected | Say plainly that it failed and what the message was. Do not produce a number. |
-| 2 | Bad input | Name the value that was rejected and the accepted range. Do not retry with a different guess. |
-| 3 | Setup incomplete | Go to the setup tree above. Never report this as "your analytics is broken"; nothing is broken, a step is unfinished. |
-| 4 | Google refused | Relay Google's own reason plus the fix the error already names. |
+| 1 | Something broke and the skill has no rule for it | Say plainly that it failed and quote the message. Do not produce a number. Usually nothing here reached Google at all; occasionally it is an HTTP status the skill has no rule for, and then the message names it (`Google Analytics returned HTTP 451`). Say what the message says and add no cause it does not give. |
+| 2 | The query is wrong | Name the value that was rejected and what is accepted instead. Do not retry with a different guess. Most of these are caught here before anything is sent (an unreadable date range, too many dimensions, a row limit out of range), and some are the skill's own refusals rather than typos: a person-identifying dimension, a property outside the allowlist. Those name the environment variable that would change it, and only a person can set that. Google's own "that query is invalid" lands here too, because the answer to both is the same: change the query. The message says which happened. |
+| 3 | Setup incomplete | Go to the setup tree above. Never report this as "your analytics is broken"; nothing is broken, a step is unfinished. A property id that is not a property id (a `G-XXXXXXXXXX` measurement id, a tag or Ads id) arrives here rather than as 2, because the fix is the same conversation the setup tree already has. |
+| 4 | Google refused | The request reached Google and Google said no for a reason that is not about the query: quota, a server error, access. Relay Google's own reason plus the fix the error already names. |
 
 Codes 3 and 4 are deliberately separate. "You have not finished setting this up" and
 "Google said no" call for completely different conversations, and merging them is how
 an unfinished setup gets reported as an outage.
+
+The rule that matters across all of them: **never tell the user Google rejected
+something that never reached Google.** Every message says whether the check ran here
+or there, so read it before attributing the failure.
 
 Zero rows is worth repeating because it is the one people get wrong: a date range
 before the property started collecting returns an empty, entirely correct answer.
@@ -431,7 +438,7 @@ For any of those, run a normal report over a recent range instead.
 | --- | --- | --- |
 | `--property` | report, compare, live, query, fields | Numeric property id, overriding `GA4_PROPERTY_ID` for this one command. |
 | `--range` | report, compare, query | A date range from the table below. Default: the last 28 days. |
-| `--start` / `--end` | report, query | `YYYY-MM-DD` each, used together instead of `--range`. Not available on compare. |
+| `--start` / `--end` | report, query | `YYYY-MM-DD` each, used together instead of `--range`. One without the other is an error, not half a range. Not available on compare. |
 | `--limit` | report, compare, live, query | Rows returned. Defaults: 25 for query, the preset's own row count capped at 100 for report, 10 for compare, 20 for live. Maximum 1000. |
 | `--filter` | report, query | **Two different things. See below.** |
 | `--sort` | query | A metric name to sort by, descending. Falls back to a dimension name. |
@@ -534,6 +541,11 @@ By default: dimension values are redacted before you see them (emails, phone num
 UUIDs, JWTs, Luhn-valid card numbers, long opaque tokens, and query-parameter values
 outside a keep list), `userId` and user-scoped custom dimensions are refused, and
 nothing is written to disk.
+
+If somebody has turned redaction off, every report says so in its caveats and
+`doctor --json` reports it in `warnings`. Pass that on rather than dropping it: the rows
+then contain whatever personal data was in the URLs, and they are now in this
+conversation and with the model provider.
 
 The limit worth stating plainly: report data you read is sent to whatever model
 provider is configured, under that provider's terms. Redaction changes what is in those

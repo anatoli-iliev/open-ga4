@@ -47,13 +47,33 @@ const check = process.argv.includes("--check");
  * and giving it its own source module would only add a file whose entire
  * content is this. src/cli/main.ts's `main` returns an exit code rather than
  * calling `process.exit` itself, so this shim is the only place in the
- * shipped code that exits the process.
+ * shipped code that sets one.
+ *
+ * `process.exitCode`, never `process.exit()`. `process.exit()` terminates the
+ * process at once and takes two things down with it, both verified:
+ *
+ * 1. The opt-in audit log. src/tools/reports.ts starts the append and does not
+ *    await it (a log line is not worth delaying an answer for), so
+ *    `process.exit()` killed the write before it reached the filesystem: the
+ *    log file existed and stayed empty run after run. A privacy feature that
+ *    silently records nothing is worse than one that is absent.
+ * 2. Output over about 1 MiB, whenever stdout is a pipe, which is exactly how
+ *    an agent captures it. Writes to a pipe are asynchronous, so 2,000,001
+ *    bytes followed by `process.exit(0)` delivered 1,048,576 bytes and exit
+ *    code 0: a silently truncated report that still looks like a success.
+ *    `query --limit 1000` with a few dimensions reaches that size.
+ *
+ * Setting `exitCode` lets Node exit on its own once the event loop drains,
+ * which flushes both. Nothing here holds the loop open beyond that:
+ * `AbortSignal.timeout` in src/ga4/http.ts is unref'd by construction, so the
+ * process still exits promptly. src/cli/shim.test.ts runs this shim as a child
+ * process and asserts both behaviours.
  */
 const CLI_SHIM = `#!/usr/bin/env node
 import { main } from "./cli/main.js";
 import { processStreams } from "./cli/render.js";
 
-process.exit(await main(process.argv.slice(2), process.env, processStreams));
+process.exitCode = await main(process.argv.slice(2), process.env, processStreams);
 `;
 
 /** Every file under `dir`, recursed into subdirectories. Never fs.globSync. */

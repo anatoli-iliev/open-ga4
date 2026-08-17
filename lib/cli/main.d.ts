@@ -19,4 +19,4 @@ export type CommandArgs = Extract<ParsedArgs, {
  * Kept in this file, not split out: this mapping is what a reviewer most
  * needs to see in one place.
  */
-export declare function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: NodeJS.ProcessEnv): Promise<string>;
+export declare function dispatch(runtime: Ga4Runtime, parsed: CommandArgs): Promise<string>;

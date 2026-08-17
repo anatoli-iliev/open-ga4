@@ -200,11 +200,17 @@ hand-maintained field lists that disagreed with each other, which is the whole
 argument against shipping one as truth.
 
 The live `properties/{id}/metadata` response is authoritative and is what
-`fields` searches. A generated snapshot ships for offline preset validation
-and fast startup, and a CI script re-fetches metadata to fail the build if any
-shipped name has disappeared. Diagnostics for a bad field name come from that
-metadata and from `checkCompatibility`, never from string-matching Google's
-error prose, which is unversioned and undocumented.
+`fields` searches. Diagnostics for a bad field name come from that metadata,
+never from string-matching Google's error prose, which is unversioned and
+undocumented.
+
+*Superseded in part.* Two things named here did not ship. No metadata snapshot
+is generated and no CI job re-fetches one: the preset definitions in
+`src/ga4/presets.ts` name their fields directly and everything else is read
+live. And `checkCompatibility` was implemented in the client but never called
+by anything; it was deleted in the final review rather than left inside a
+network surface whose completeness is the argument this document makes,
+because a reader auditing that surface would find a method nothing uses.
 
 ### D8. Errors map to fixes, not stack traces
 

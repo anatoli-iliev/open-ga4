@@ -1,11 +1,4 @@
-/**
- * What the agent is allowed to ask for.
- *
- * Redaction (see `redact.ts`) cleans values on the way out. This module is the
- * other half: it refuses certain *questions* outright, before a request is
- * spent, and it resolves the property identifier that users get wrong more
- * often than anything else in GA4.
- */
+import { Ga4Error } from "../ga4/errors.js";
 /**
  * Dimensions Google's own thresholding exists to protect. Allowed, because
  * marketers legitimately report on them, but a report using one always carries
@@ -29,8 +22,39 @@ export type AccessPolicy = {
     propertyAllowlist: readonly string[];
 };
 export declare const DEFAULT_ACCESS_POLICY: AccessPolicy;
-export declare class PolicyError extends Error {
-    constructor(message: string);
+/**
+ * A refusal this skill made locally: a dimension it will not ask for, a
+ * property outside the allowlist, an identifier that is not a property id.
+ *
+ * Extends Ga4Error, rather than a plain Error, for the same reason
+ * Ga4RequestError in src/ga4/limits.ts does (read the comment there; this is
+ * the same defect, found again in a second class that was not brought along
+ * with the first). Anything that is not a Ga4Error falls through diagnose()
+ * into the generic "UNEXPECTED" bucket, whose fix is "Run doctor to check the
+ * setup" and whose exit code says Google refused the request. None of these
+ * ever reach a socket: attributing this skill's own privacy refusal to Google
+ * is both false and unfixable by the person who reads it.
+ *
+ * `code` is per-throw rather than fixed, because these are not all the same
+ * kind of problem:
+ *
+ * - INVALID_REQUEST (exit 2) for a value the caller can correct: a blocked
+ *   dimension, a property outside the allowlist, a string that is no kind of
+ *   Google identifier at all.
+ * - PROPERTY_NOT_FOUND (exit 3) for a measurement id or a Google tag/Ads id.
+ *   Those identify something real in Google's world but not a property, and
+ *   they are what people paste because it is the id on their own site. That
+ *   code is what makes `doctor --json` report `blocked_on: "wrong_property"`,
+ *   the setup step written for exactly this mistake, so the agent gets the
+ *   conversation the state machine already has an answer for.
+ * - NO_PROPERTY (exit 3) for a blank one, matching src/runtime.ts's own
+ *   NO_PROPERTY when nothing was configured at all.
+ */
+export declare class PolicyError extends Ga4Error {
+    constructor(message: string, options?: {
+        code?: string;
+        fix?: string;
+    });
 }
 /** Refuse a query that asks for person-level dimensions, naming the opt-in. */
 export declare function assertDimensionsAllowed(dimensions: readonly string[], policy: AccessPolicy, userScopedCustom?: ReadonlySet<string>): void;

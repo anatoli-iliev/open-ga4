@@ -183,7 +183,7 @@ request, and `guardedFetch` is the only way out. The check is exact-match on
 | Host | Why |
 | --- | --- |
 | `oauth2.googleapis.com` | Exchange a credential for a one-hour access token |
-| `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata`, `checkCompatibility` |
+| `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata` |
 | `analyticsadmin.googleapis.com` | `accountSummaries`, the property list `properties` and `doctor` print |
 
 Nothing else, ever. Adding a host is a visible, reviewable diff in one constant.
@@ -226,10 +226,10 @@ access instead of property-level, or a Cloud IAM role nobody understands.
   `https://www.googleapis.com/auth/analytics.readonly`. A test asserts the set of
   `https://www.googleapis.com/auth/...` strings in the shipped bundle is exactly that
   one. Google enforces scope server-side regardless of what a client asks for.
-- The complete Google surface is five read methods in one hand-written file
+- The complete Google surface is four read methods in one hand-written file
   (`src/ga4/client.ts`): `runReport`, `runRealtimeReport`, `getMetadata`,
-  `checkCompatibility`, `listAccountSummaries`. There is no generated SDK in which an
-  update could quietly introduce `deleteProperty`.
+  `listAccountSummaries`. There is no generated SDK in which an update could quietly
+  introduce `deleteProperty`.
 - **It never calls `properties.audienceExports`, `properties.audienceLists`, or the
   Admin API's `runAccessReport`**, the three surfaces built to hand back rows keyed to
   an individual visitor rather than aggregates. `src/privacy/surface.test.ts` walks

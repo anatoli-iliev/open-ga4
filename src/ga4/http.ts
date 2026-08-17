@@ -14,6 +14,19 @@ export const ALLOWED_HOSTS: readonly string[] = [
   "analyticsadmin.googleapis.com",
 ];
 
+/**
+ * A request this skill refused to make.
+ *
+ * Deliberately a plain Error rather than a Ga4Error, unlike the other classes
+ * raised before a socket is opened (PolicyError, DateRangeError,
+ * Ga4RequestError). Extending Ga4Error would mean importing src/ga4/errors.ts
+ * here, and errors.ts already imports this module for Ga4HttpError: a cycle
+ * whose `class X extends Ga4Error` would be evaluated while errors.ts was
+ * still initialising, which crashes at import time rather than misbehaving
+ * later. src/ga4/errors.ts's diagnose() maps this to a named EGRESS_BLOCKED
+ * Ga4Error instead, which is what that function is for, and there is a test
+ * for the exit code it produces.
+ */
 export class EgressBlockedError extends Error {
   constructor(readonly host: string) {
     super(

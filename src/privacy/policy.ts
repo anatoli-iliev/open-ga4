@@ -1,3 +1,5 @@
+import { Ga4Error } from "../ga4/errors.js";
+
 /**
  * What the agent is allowed to ask for.
  *
@@ -121,9 +123,43 @@ export const DEFAULT_ACCESS_POLICY: AccessPolicy = {
   propertyAllowlist: [],
 };
 
-export class PolicyError extends Error {
-  constructor(message: string) {
-    super(message);
+/**
+ * A refusal this skill made locally: a dimension it will not ask for, a
+ * property outside the allowlist, an identifier that is not a property id.
+ *
+ * Extends Ga4Error, rather than a plain Error, for the same reason
+ * Ga4RequestError in src/ga4/limits.ts does (read the comment there; this is
+ * the same defect, found again in a second class that was not brought along
+ * with the first). Anything that is not a Ga4Error falls through diagnose()
+ * into the generic "UNEXPECTED" bucket, whose fix is "Run doctor to check the
+ * setup" and whose exit code says Google refused the request. None of these
+ * ever reach a socket: attributing this skill's own privacy refusal to Google
+ * is both false and unfixable by the person who reads it.
+ *
+ * `code` is per-throw rather than fixed, because these are not all the same
+ * kind of problem:
+ *
+ * - INVALID_REQUEST (exit 2) for a value the caller can correct: a blocked
+ *   dimension, a property outside the allowlist, a string that is no kind of
+ *   Google identifier at all.
+ * - PROPERTY_NOT_FOUND (exit 3) for a measurement id or a Google tag/Ads id.
+ *   Those identify something real in Google's world but not a property, and
+ *   they are what people paste because it is the id on their own site. That
+ *   code is what makes `doctor --json` report `blocked_on: "wrong_property"`,
+ *   the setup step written for exactly this mistake, so the agent gets the
+ *   conversation the state machine already has an answer for.
+ * - NO_PROPERTY (exit 3) for a blank one, matching src/runtime.ts's own
+ *   NO_PROPERTY when nothing was configured at all.
+ */
+export class PolicyError extends Ga4Error {
+  constructor(message: string, options: { code?: string; fix?: string } = {}) {
+    super(
+      options.code ?? "INVALID_REQUEST",
+      message,
+      options.fix ??
+        "This skill decided that locally, before any request reached Google. Change the value " +
+          "named above, or the setting that refuses it, and try again.",
+    );
     this.name = "PolicyError";
   }
 }
@@ -150,6 +186,11 @@ export function assertDimensionsAllowed(
       `GA4_ALLOW_USER_DIMENSIONS to true. ` +
       `For counts of people, use the totalUsers or activeUsers metric instead; ` +
       `it answers "how many" without naming anyone.`,
+    {
+      fix:
+        "This skill refused the question on this machine; Google was never asked. Ask for the " +
+        "same numbers without that dimension, or have a person set the variable named above.",
+    },
   );
 }
 
@@ -162,6 +203,11 @@ export function assertPropertyAllowed(propertyId: string, policy: AccessPolicy):
       `Property ${propertyId} is not in this skill's allowlist ` +
         `(${policy.propertyAllowlist.join(", ")}). Add it to the comma-separated ` +
         `GA4_PROPERTY_ALLOWLIST environment variable to query it.`,
+      {
+        fix:
+          "Nothing was sent to Google: the allowlist is enforced on this machine. Ask for one of " +
+          "the properties it names, or have a person widen GA4_PROPERTY_ALLOWLIST.",
+      },
     );
   }
 }
@@ -182,6 +228,12 @@ export function normalizePropertyId(input: string): string {
   if (!value) {
     throw new PolicyError(
       "No GA4 property id. Run properties to list the ones this credential can read.",
+      {
+        code: "NO_PROPERTY",
+        fix:
+          "Pass --property, or set the GA4_PROPERTY_ID environment variable. " +
+          "Run properties to list the ones this credential can read.",
+      },
     );
   }
 
@@ -191,12 +243,23 @@ export function normalizePropertyId(input: string): string {
     return withoutPrefix;
   }
 
+  // A measurement id and a tag or Ads id both name something real in Google's
+  // world, just not a property, and both are the id somebody has in front of
+  // them (it is in the tag on their own site). PROPERTY_NOT_FOUND is what
+  // src/setup/state.ts turns into the `wrong_property` step, whose text names
+  // this exact mistake. Anything else below is a value that identifies nothing
+  // at all, which is ordinary bad input.
+  const WRONG_KIND_OF_ID_FIX =
+    "Run properties to list the numeric property ids this credential can read, then use one of " +
+    "those, in --property or in GA4_PROPERTY_ID. Nothing was sent to Google.";
+
   if (MEASUREMENT_ID.test(value)) {
     throw new PolicyError(
       `"${value}" is a measurement id, which identifies a data stream rather than a property, ` +
         `and the reporting API cannot use it. You need the numeric property id: the ~9-digit ` +
         `number shown under Admin > Property details, or in the URL as p123456789. ` +
         `Run properties to list yours.`,
+      { code: "PROPERTY_NOT_FOUND", fix: WRONG_KIND_OF_ID_FIX },
     );
   }
 
@@ -204,6 +267,7 @@ export function normalizePropertyId(input: string): string {
     throw new PolicyError(
       `"${value}" is a Google tag or Ads id, not a GA4 property id. ` +
         `Run properties to list the numeric property ids this credential can read.`,
+      { code: "PROPERTY_NOT_FOUND", fix: WRONG_KIND_OF_ID_FIX },
     );
   }
 

@@ -1,3 +1,4 @@
+import { Ga4Error } from "./errors.js";
 /**
  * Date range parsing.
  *
@@ -20,8 +21,23 @@ export type Ga4DateRange = {
     /** Set when boundaries were computed locally rather than resolved by Google. */
     timezoneNote?: string;
 };
-export declare class DateRangeError extends Error {
-    constructor(input: string);
+/**
+ * A date range this module could not read, or read as impossible.
+ *
+ * Extends Ga4Error, rather than a plain Error, for the same reason
+ * Ga4RequestError in src/ga4/limits.ts does (read the comment there; this is
+ * the same defect, found again in a second class that was not brought along
+ * with the first). A plain Error falls through diagnose() into the generic
+ * "UNEXPECTED" bucket, which carries the fix "Run doctor to check the setup"
+ * and the exit code for "Google refused". Parsing happens entirely on this
+ * machine and never touches a socket, so a mistyped range was being reported
+ * to somebody as Google turning them down, with a fix that could not help.
+ *
+ * INVALID_REQUEST, so it exits 2: name the value that was rejected and the
+ * forms that are accepted, and do not retry with a different guess.
+ */
+export declare class DateRangeError extends Ga4Error {
+    constructor(input: string, message?: string);
 }
 /**
  * Parse a human date-range expression into GA4 request fields.

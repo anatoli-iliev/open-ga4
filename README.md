@@ -15,7 +15,7 @@ surface is zero runtime dependencies, three allowed hosts, and one OAuth scope.
 | --- | --- |
 | `report` | One preset report (top pages, traffic sources, channels, countries, devices, events, ecommerce and more) as a markdown table. |
 | `compare` | Two consecutive periods side by side, with the change between them. |
-| `live` | Active users in the last 30 minutes. The only command that sees today. |
+| `live` | Active users in the last 30 minutes, from Google's realtime endpoint. |
 | `fields` | Searches the property's live dimension and metric catalog and returns exact API names. |
 | `query` | Full control: your own dimensions, metrics, filter and sort order. |
 | `properties` | Lists every property this credential can read, with its numeric id. |

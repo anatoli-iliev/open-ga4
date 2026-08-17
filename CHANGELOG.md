@@ -42,18 +42,24 @@ take, so the packaging changed and the analytics core did not.
 - `fields`: searches the property's live metadata, so custom dimensions
   and metrics defined on that property are found without a skill update.
 - `properties`: every property the credential can read, with its numeric id.
-- `doctor`: ordered setup checks that stop at the first real failure and name
-  its fix. With `--json`, the single next thing the user must do, as a
-  `blocked_on` state with a link and the exact string to paste.
+- `doctor`: setup checks in dependency order, each naming its own fix. Only a
+  credential that cannot be found or read stops the run, because nothing after
+  it can be checked without one. With `--json`, the single next thing the user must do, as a
+  `blocked_on` state with a link and the exact string to paste, plus a
+  `warnings` array for anything worth saying that is blocking nothing.
 
 ### Privacy and security
 
 - Egress allowlist of three `googleapis.com` hosts, enforced before any request
   is issued. Covered by tests for lookalike domains, userinfo smuggling and
   non-default ports.
-- Unconditional redaction of dimension values: emails (including
-  percent-encoded), UUIDs, JWTs, long opaque tokens, Luhn-valid card numbers,
-  E.164 phone numbers, and the values of query parameters outside a keep list.
+- Redaction of dimension values, on by default and turned off only by setting
+  `GA4_REDACT`: emails (including percent-encoded), UUIDs, JWTs, long opaque
+  tokens, Luhn-valid card numbers, E.164 phone numbers, and the values of query
+  parameters outside a keep list. With it off, every report says so in its
+  caveats and `doctor --json` says so in `warnings`.
+- Unconditional stripping of credentials from every error message and warning
+  the skill prints, which no setting can turn off.
 - Person-identifying dimensions (`userId`, `signedInWithUserId`,
   `customUser:*`, and any user-scoped custom definition the property reports)
   are refused unless explicitly enabled.
@@ -78,6 +84,16 @@ take, so the packaging changed and the analytics core did not.
 - Zero runtime dependencies: no `dependencies`, no `peerDependencies`, and
   every import either relative or a `node:` builtin. OAuth assertions are
   signed with `node:crypto`; the API is called with `fetch`.
+- Exit codes are a contract, since an agent reads them to decide what to say:
+  0 worked, 1 an internal failure nothing can name, 2 the query is wrong, 3
+  setup unfinished, 4 Google refused for a reason that is not about the query.
+  The code says what to do next, not which side of the network decided it: a
+  privacy refusal made here and Google's own "that query is invalid" both exit
+  2 because the answer to both is to change the query, while a measurement id
+  in GA4_PROPERTY_ID exits 3 (it is a setup step, and doctor has an answer for
+  it) and a request the egress guard blocked exits 1 (it can only mean a defect
+  in the skill). Every message says where the decision was made, so a refusal
+  made on this machine is never relayed as Google's.
 - Errors are diagnosed from Google's machine-readable `status` and `reason`
   fields, never from its message prose. Clock skew is detected from the
   response `Date` header and reported as clock skew rather than as a bad

@@ -174,9 +174,6 @@ metadata:
         description: >-
           Google's standard variable, read as a fallback so an existing gcloud
           setup keeps working.
-      - name: NO_COLOR
-        required: false
-        description: Set to any value to disable coloured output.
       - name: GA4_REDACT
         required: false
         description: >-
@@ -201,16 +198,20 @@ metadata:
 ---
 ```
 
-**Eight declared variables, not four.** The last four are the settings that weaken a
-privacy default, and each of them is an environment variable precisely so that a
+**Seven declared variables, not four.** (Eight as first written: `NO_COLOR` was declared
+alongside these and removed in the final review, because nothing in the shipped code
+emits an escape sequence and the one function that read the variable had no caller. A
+variable a user is invited to set that changes nothing is worse than one that is
+undocumented: they set it, nothing happens, and no error explains why.) The last four
+are the settings that weaken a privacy default, and each of them is an environment variable precisely so that a
 *person* sets it: a command-line flag can be set by the model, and a page title is
 attacker-controlled text that reaches the model, so a flag would make "turn redaction
 off" reachable from a dimension value. `src/cli/args.ts` therefore rejects every
-spelling of them as a flag. Declaring all eight is also a publishing requirement rather
+spelling of them as a flag. Declaring all of them is also a publishing requirement rather
 than a tidiness one: ClawHub's security review compares declared metadata against
 actual behaviour, and `src/config.ts` reads all four, so omitting them would be an
 undeclared read. A test asserts the declared set, the set the code reads, and this list
-are the same eight names.
+are the same names.
 
 The description is 282 characters, inside the roughly 300-character budget that
 keeps `openclaw skills list` rendering it in one or two table lines rather than

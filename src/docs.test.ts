@@ -116,6 +116,84 @@ describe("documented identifiers", () => {
   });
 });
 
+/**
+ * Every method `src/ga4/client.ts` returns, read from the source rather than
+ * listed here. The client is one hand-written object literal, so its methods
+ * are the only ones indented four spaces and declared `async`; `guardedFetch`
+ * and `call` are module-level functions and do not match.
+ */
+function clientMethods(): string[] {
+  const source = readFileSync(path.join(repoRoot, "src/ga4/client.ts"), "utf8");
+  return [...source.matchAll(/^ {4}async (\w+)\(/gm)].map((match) => match[1]!);
+}
+
+const COUNT_WORDS: readonly string[] = ["zero", "one", "two", "three", "four", "five", "six", "seven"];
+
+describe("the documented Google API surface", () => {
+  /**
+   * "The complete Google surface is N read methods: ..." is the load-bearing
+   * sentence of this project's security argument, and it is made in two
+   * documents. It went stale the moment a method was added or removed:
+   * `checkCompatibility` was implemented, never called, and counted in both
+   * lists, so a reader auditing the surface would have gone looking for a
+   * caller that did not exist.
+   *
+   * Pinning the rendered list, built from the source, is what makes the next
+   * change to the client impossible to land without updating the prose.
+   */
+  it("lists exactly the methods the client implements, in both documents", () => {
+    const methods = clientMethods();
+    expect(methods.length, "no methods were found in src/ga4/client.ts").toBeGreaterThan(0);
+    const rendered = methods.map((name) => `\`${name}\``).join(", ");
+
+    for (const file of ["PRIVACY.md", "SECURITY.md"]) {
+      const text = readFileSync(path.join(repoRoot, file), "utf8").replace(/\s+/g, " ");
+      expect(text, `${file} should name the complete surface as ${rendered}`).toContain(rendered);
+      expect(text, `${file} should say there are ${COUNT_WORDS[methods.length]} read methods`)
+        .toContain(`${COUNT_WORDS[methods.length]} read methods`);
+    }
+  });
+
+  it("names no method the client does not have, in the documents that claim completeness", () => {
+    // The other direction, so a method deleted from the client cannot survive
+    // in a sentence somewhere other than the two lists above.
+    //
+    // Scoped to the two documents that assert what the surface *is*.
+    // docs/DESIGN.md is deliberately excluded: it is a design record, and its
+    // convention is to say in place what was decided and then reversed, which
+    // means naming a retired identifier in the past tense on purpose.
+    const implemented = new Set(clientMethods());
+    // Method-shaped rather than a fixed list, so a name nobody has invented
+    // yet is caught as well as the ones that exist today.
+    const methodShaped = /`(\w*(?:Report|Metadata|Compatibility|Summaries|Property|Properties))`/g;
+    /**
+     * The three method-shaped names in these documents that are deliberately
+     * not client methods, each named for a reason the sentence around it
+     * depends on:
+     *
+     * - `accountSummaries` is the Admin API resource the host table names.
+     * - `deleteProperty` is the write method that does not exist, named as the
+     *   thing a generated SDK could quietly introduce and this one cannot.
+     * - `runAccessReport` is one of the three per-visitor endpoints the skill
+     *   never calls, named so the claim can be checked.
+     */
+    const NOT_CLIENT_METHODS = new Set(["accountSummaries", "deleteProperty", "runAccessReport"]);
+    const offenders: string[] = [];
+    for (const file of ["PRIVACY.md", "SECURITY.md"]) {
+      const text = readFileSync(path.join(repoRoot, file), "utf8");
+      for (const match of text.matchAll(methodShaped)) {
+        const name = match[1]!;
+        // Lower-case first letter: a method name, not a type (RunReportRequest)
+        // or a URL path segment (`metadata`, matched by neither).
+        if (/^[a-z]/.test(name) && !implemented.has(name) && !NOT_CLIENT_METHODS.has(name)) {
+          offenders.push(`${file}: ${name}`);
+        }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([]);
+  });
+});
+
 describe("the privacy documentation", () => {
   it("lists every host the plugin may contact", async () => {
     const privacy = await readFile(path.join(repoRoot, "PRIVACY.md"), "utf8");
@@ -544,6 +622,124 @@ describe("the committed build output claim", () => {
       expect(driftCheck, "the drift-check step is missing").toBeGreaterThan(-1);
       expect(index, `the ${label} step is missing`).toBeGreaterThan(-1);
       expect(driftCheck, `the drift check must run before ${label}, which can rebuild lib/`).toBeLessThan(index);
+    }
+  });
+});
+
+describe("CONTRIBUTING.md's claim-to-enforcement table", () => {
+  /**
+   * The table maps each published privacy claim to the function that enforces
+   * it. A wrong entry is worse than a missing one: it sends a contributor to
+   * weaken the wrong function while believing they are looking at the right
+   * one. It credited dimension-value redaction to `redactText`, which is the
+   * unconditional credential stripper for errors and logs; the function that
+   * redacts dimension values is `redactValue`.
+   *
+   * So every identifier named in the "Where it is enforced" column has to
+   * appear in one of the files that row names.
+   */
+  it("names an enforcement point that exists in one of the files the row cites", () => {
+    const contributing = readFileSync(path.join(repoRoot, "CONTRIBUTING.md"), "utf8");
+    const offenders: string[] = [];
+    let rowsChecked = 0;
+
+    for (const line of contributing.split("\n")) {
+      if (!line.startsWith("| ") || line.startsWith("| ---")) continue;
+      const cells = line.split("|").map((cell) => cell.trim());
+      const [, , enforced, asserted] = cells;
+      if (enforced === undefined || asserted === undefined) continue;
+
+      const files = [...`${enforced} ${asserted}`.matchAll(/`((?:src|lib|scripts)\/[\w./-]+\.(?:ts|js|mjs))`/g)]
+        .map((match) => match[1]!)
+        .filter((file) => existsSync(path.join(repoRoot, file)));
+      const identifiers = [...enforced.matchAll(/`([A-Za-z_][A-Za-z0-9_]*)`/g)].map((match) => match[1]!);
+      if (identifiers.length === 0) continue;
+
+      rowsChecked += 1;
+      const sources = files.map((file) => readFileSync(path.join(repoRoot, file), "utf8")).join("\n");
+      for (const identifier of identifiers) {
+        if (!sources.includes(identifier)) {
+          offenders.push(`${identifier} is not in ${files.join(", ") || "any file this row names"}`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+    // A parser that silently matched nothing would pass this test forever.
+    expect(rowsChecked, "no claim rows with an enforcement identifier were found").toBeGreaterThan(2);
+  });
+});
+
+describe("the documented Node version floor", () => {
+  it("matches package.json's engines.node wherever a document states one", () => {
+    // CONTRIBUTING.md said "Node 22 or newer" while package.json required
+    // 22.22.3: close enough to look right and wrong enough to send somebody to
+    // a version that does not run this.
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+      engines: { node: string };
+    };
+    const floor = /(\d+\.\d+\.\d+)/.exec(pkg.engines.node)?.[1];
+    expect(floor, "package.json's engines.node has no x.y.z floor").toBeDefined();
+
+    const stated: string[] = [];
+    for (const { file, text } of readShippedDocs()) {
+      for (const match of text.matchAll(/\bNode (\d+(?:\.\d+\.\d+)?)/g)) {
+        stated.push(`${file}: Node ${match[1]}`);
+        expect(match[1], `${file} states a Node version that is not the floor`).toBe(floor);
+      }
+    }
+    expect(stated.length, "no document states the Node version at all").toBeGreaterThan(0);
+  });
+});
+
+describe(".github/CODEOWNERS", () => {
+  /**
+   * CODEOWNERS is a list of paths, and a path that no longer exists protects
+   * nothing while looking exactly like protection. Line 84 guarded
+   * `/openclaw.plugin.json` for a whole project after the plugin manifest was
+   * deleted, under a comment describing what that manifest did.
+   *
+   * Only anchored, non-wildcard patterns are checked: `*` matches everything
+   * by design, and a pattern without a leading `/` is a name-anywhere rule
+   * rather than a claim that a particular file exists.
+   */
+  const CODEOWNERS = readFileSync(path.join(repoRoot, ".github/CODEOWNERS"), "utf8");
+
+  function ownedPaths(): string[] {
+    const paths: string[] = [];
+    for (const line of CODEOWNERS.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed === "" || trimmed.startsWith("#")) continue;
+      const pattern = trimmed.split(/\s+/)[0]!;
+      if (pattern.startsWith("/") && !pattern.includes("*")) {
+        paths.push(pattern);
+      }
+    }
+    return paths;
+  }
+
+  it("protects only paths that exist", () => {
+    const missing = ownedPaths().filter((pattern) => !existsSync(path.join(repoRoot, pattern)));
+    expect(missing).toEqual([]);
+  });
+
+  it("names something, so the check above cannot pass vacuously", () => {
+    expect(ownedPaths().length).toBeGreaterThan(5);
+  });
+
+  it("does not still name the repository this project was renamed from", () => {
+    // The shipped documentation is swept for this already; CODEOWNERS was
+    // outside that sweep and kept the old name in its first line.
+    expect(CODEOWNERS).not.toContain("openclaw-plugin-ga4");
+  });
+
+  it("owns the tests that hold the published claims up", () => {
+    for (const file of [
+      "/src/privacy/surface.test.ts",
+      "/src/docs.test.ts",
+      "/src/docs/skill.test.ts",
+    ]) {
+      expect(ownedPaths(), `${file} should have a CODEOWNERS entry`).toContain(file);
     }
   });
 });

@@ -1,7 +1,8 @@
 import type { FieldMetadata } from "../ga4/client.js";
-import { diagnose } from "../ga4/errors.js";
+import { diagnose, type Ga4Error } from "../ga4/errors.js";
 import { RENAMED_FIELDS } from "../ga4/limits.js";
 import { classifyDimension } from "../privacy/policy.js";
+import { redactText } from "../privacy/redact.js";
 import type { Ga4Runtime } from "../runtime.js";
 
 /**
@@ -15,6 +16,36 @@ import type { Ga4Runtime } from "../runtime.js";
 /** Table cells must not be able to forge table structure. */
 function cell(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+}
+
+/**
+ * A failed check, with redactText applied once, here, at the point the text is
+ * built from an error.
+ *
+ * Every other route out of this process redacts at the point of printing, but
+ * a check is not printed in one place: it reaches the markdown checklist on
+ * **stdout**, the `checks` array `--json` returns, and the message
+ * src/setup/state.ts quotes in its `unknown` bucket. Redacting at each of
+ * those is three places to remember and one to forget, so it happens here
+ * instead and every consumer inherits it.
+ *
+ * This became load-bearing when PolicyError and DateRangeError started
+ * extending Ga4Error: diagnose() returns a Ga4Error unchanged, so those
+ * messages no longer pass through the redactText that the old UNEXPECTED
+ * branch applied on the way past. The only variable text reaching here today
+ * is a property id quoted back at the user, so the exposure is small, but
+ * CONTRIBUTING.md's claim table says credentials are kept out of any message
+ * this skill prints, and stdout is a message it prints.
+ */
+function failedCheck(id: CheckId, label: string, error: Ga4Error): Check {
+  return {
+    id,
+    label,
+    status: "fail",
+    detail: redactText(error.message),
+    fix: redactText(error.fix),
+    code: error.code,
+  };
 }
 
 function scoreMatch(field: FieldMetadata, needle: string): number {
@@ -222,20 +253,16 @@ export async function runDiagnose(
       // naming it is what makes a stale path pointing at the wrong key file
       // findable, which the label alone (just "GA4_CREDENTIALS (file)")
       // cannot say.
-      detail: `loaded from ${used?.label ?? "an unknown source"}${used?.path ? ` at ${used.path}` : ""}${
-        runtime.principal() ? `, service account ${runtime.principal()}` : ""
-      }`,
+      // redactText for the same reason failedCheck applies it: this line
+      // embeds a path that came from the environment, and it goes to stdout.
+      detail: redactText(
+        `loaded from ${used?.label ?? "an unknown source"}${used?.path ? ` at ${used.path}` : ""}${
+          runtime.principal() ? `, service account ${runtime.principal()}` : ""
+        }`,
+      ),
     });
   } catch (error) {
-    const named = diagnose(error, { principal: runtime.principal() });
-    checks.push({
-      id: "credentials",
-      label: "Google credentials",
-      status: "fail",
-      detail: named.message,
-      fix: named.fix,
-      code: named.code,
-    });
+    checks.push(failedCheck("credentials", "Google credentials", diagnose(error, { principal: runtime.principal() })));
     return { markdown: renderChecks(checks, extra), details: { ok: false, checks } };
   }
 
@@ -251,31 +278,41 @@ export async function runDiagnose(
       detail: `${properties.length} propert${properties.length === 1 ? "y" : "ies"} reachable`,
     });
   } catch (error) {
-    const named = diagnose(error, { principal: runtime.principal() });
-    checks.push({
-      id: "admin_api",
-      label: "Admin API and property access",
-      status: "fail",
-      detail: named.message,
-      fix: named.fix,
-      code: named.code,
-    });
+    checks.push(
+      failedCheck("admin_api", "Admin API and property access", diagnose(error, { principal: runtime.principal() })),
+    );
   }
 
   // 3. A real report, which is the only thing that proves the Data API works.
+  //
+  //    The configured default comes before the first discovered property, and
+  //    the order matters more than it looks. resolveProperty falls back to
+  //    GA4_PROPERTY_ID only when its argument is undefined, and
+  //    `properties[0]?.id` is defined whenever the Admin API returned
+  //    anything, so passing that first meant GA4_PROPERTY_ID was never checked
+  //    by doctor at all. Two failures followed from it, both of which leave
+  //    the agent with nowhere to go:
+  //
+  //    - The Analytics grant went to a different property than the one
+  //      configured. doctor tested the granted one, passed, and reported
+  //      blocked_on: "ok" while every report 403s and exits 3. SKILL.md sends
+  //      exit 3 to doctor, and doctor said everything was fine.
+  //    - GA4_PROPERTY_ID holds a G-XXXXXXXXXX measurement id. doctor passed on
+  //      a property the user never configured, so the `wrong_property` step
+  //      written for exactly that mistake was unreachable.
+  //
+  //    Checking what is actually configured is the whole point: doctor exists
+  //    to answer "will a report work", not "does some property work".
+  //    properties[0] remains the fallback for the case it was written for,
+  //    nothing configured yet, where any readable property proves the Data API
+  //    responds.
   let propertyId: string | undefined;
   try {
-    propertyId = runtime.resolveProperty(params.property_id ?? properties[0]?.id);
+    propertyId = runtime.resolveProperty(
+      params.property_id ?? runtime.config.defaultPropertyId ?? properties[0]?.id,
+    );
   } catch (error) {
-    const named = diagnose(error);
-    checks.push({
-      id: "property_selection",
-      label: "Property selection",
-      status: "fail",
-      detail: named.message,
-      fix: named.fix,
-      code: named.code,
-    });
+    checks.push(failedCheck("property_selection", "Property selection", diagnose(error)));
   }
 
   if (propertyId) {
@@ -304,15 +341,13 @@ export async function runDiagnose(
         );
       }
     } catch (error) {
-      const named = diagnose(error, { principal: runtime.principal(), propertyId });
-      checks.push({
-        id: "data_api_report",
-        label: "Data API report",
-        status: "fail",
-        detail: named.message,
-        fix: named.fix,
-        code: named.code,
-      });
+      checks.push(
+        failedCheck(
+          "data_api_report",
+          "Data API report",
+          diagnose(error, { principal: runtime.principal(), propertyId }),
+        ),
+      );
     }
   }
 

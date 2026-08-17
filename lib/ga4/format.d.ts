@@ -49,6 +49,30 @@ export type FormattedReport = {
      */
     rowsWarning: string;
 };
+/**
+ * Collapses runs of `\r` and `\n` into a single space.
+ *
+ * In the markdown table this keeps a value from forging a new table row (a
+ * bare newline would otherwise start a line of its own, read as a fresh
+ * `| ... |` row). The same flattening matters just as much for the JSON
+ * `rows` field, for a different reason: a value that starts a line of its
+ * own reads differently to a model than one buried mid-sentence, regardless
+ * of whether the surrounding document is markdown or JSON. JSON's own
+ * escaping keeps the document structurally valid either way; it does not by
+ * itself stop injected text from reading as its own line once a model
+ * attends to it. Applied once, upstream in `body` below, so both channels
+ * share this single pass rather than each doing (or forgetting to do) their
+ * own.
+ *
+ * Exported for the one place a value reaches text *outside* the fenced block:
+ * the caveat line saying what a report was filtered to, which interpolates a
+ * filter value into prose (src/ga4/filters.ts and src/tools/reports.ts). That
+ * value comes from the agent's own argv rather than from Google, so the risk
+ * is lower, but it is the single exception to the framing discipline the rest
+ * of this module enforces, and sharing this one function is what keeps the
+ * two from drifting.
+ */
+export declare function flattenNewlines(value: string): string;
 /** The caveats that change how a number should be read. */
 export declare function caveatsFor(metadata: ResponseMetaData | undefined, hasCurrencyMetric: boolean): string[];
 /**

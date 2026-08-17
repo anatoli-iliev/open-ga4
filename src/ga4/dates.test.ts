@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { EXIT, exitCodeFor } from "../cli/exit.js";
 import { DateRangeError, parseDateRange, precedingRange, resolveToDate } from "./dates.js";
+import { Ga4Error } from "./errors.js";
 
 // A Wednesday, so week boundaries are unambiguous.
 const TODAY = new Date("2026-08-12T09:30:00Z");
@@ -134,6 +136,55 @@ describe("parseDateRange: rejections", () => {
       expect(() => parseDateRange(input, TODAY)).toThrow(/last 7 days/);
     },
   );
+
+  /**
+   * Nothing in this module opens a socket, so a range it cannot read must not
+   * be reported as Google turning the request down. A plain Error here fell
+   * through diagnose()'s generic "UNEXPECTED" bucket and did exactly that,
+   * with "Run doctor to check the setup" as the fix for a typo.
+   */
+  it.each(["sometime last spring", "2026-02-01..2026-01-01", "next week"])(
+    "reports %o as bad input, locally, not as a refusal from Google",
+    (input) => {
+      let caught: unknown;
+      try {
+        parseDateRange(input, TODAY);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Ga4Error);
+      expect((caught as Ga4Error).code).toBe("INVALID_REQUEST");
+      expect(exitCodeFor(caught)).toBe(EXIT.BAD_INPUT);
+      expect((caught as Ga4Error).fix).not.toMatch(/Run doctor/);
+    },
+  );
+
+  it("keeps the same treatment for a range that runs backwards", () => {
+    expect(() => parseDateRange("2026-02-01..2026-01-01", TODAY)).toThrow(DateRangeError);
+    expect(() => parseDateRange("2026-02-01..2026-01-01", TODAY)).toThrow(/starts after it ends/);
+  });
+
+  it("gives a fix that stands on its own after either message", () => {
+    // One fix line is printed after both messages, so it cannot point "above"
+    // at a list of accepted forms: the backwards-range message names none.
+    for (const input of ["sometime last spring", "2026-02-01..2026-01-01"]) {
+      let caught: Ga4Error | undefined;
+      try {
+        parseDateRange(input, TODAY);
+      } catch (error) {
+        caught = error as Ga4Error;
+      }
+      expect(caught?.fix).toContain("last 28 days");
+      expect(caught?.fix).not.toMatch(/above/);
+    }
+  });
+
+  it("treats an unreadable value in resolveToDate the same way", () => {
+    // precedingRange resolves both ends through this, so a bad stored range
+    // reaches it as well as a bad typed one.
+    expect(() => resolveToDate("whenever")).toThrow(DateRangeError);
+    expect(exitCodeFor(new DateRangeError("whenever"))).toBe(EXIT.BAD_INPUT);
+  });
 });
 
 describe("resolveToDate", () => {

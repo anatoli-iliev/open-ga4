@@ -168,28 +168,6 @@ export declare function createGa4Client(options: Ga4ClientOptions): {
      * hardcoded list that could go stale against a rename.
      */
     getMetadata(propertyId: string, signal?: AbortSignal): Promise<MetadataResponse>;
-    /**
-     * Ask Google which of these fields cannot be combined, rather than guessing
-     * from a rejected request's prose.
-     */
-    checkCompatibility(propertyId: string, request: {
-        dimensions?: Array<{
-            name: string;
-        }>;
-        metrics?: Array<{
-            name: string;
-        }>;
-        compatibilityFilter?: "COMPATIBLE" | "INCOMPATIBLE";
-    }, signal?: AbortSignal): Promise<{
-        dimensionCompatibilities?: Array<{
-            dimensionMetadata?: FieldMetadata;
-            compatibility?: string;
-        }>;
-        metricCompatibilities?: Array<{
-            metricMetadata?: FieldMetadata;
-            compatibility?: string;
-        }>;
-    }>;
     /** Every property this credential can read, so nobody has to hunt for an id. */
     listAccountSummaries(signal?: AbortSignal): Promise<AccountSummary[]>;
 };
