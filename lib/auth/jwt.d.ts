@@ -14,7 +14,8 @@ export type ServiceAccount = {
     /** Present in the key file; defaults to Google's public token endpoint. */
     tokenUri?: string;
 };
-/** Decode one segment of a JWT. Exported for tests and for `doctor`. */
+/** Decode one segment of a JWT. Exported so the assertion's claims can be
+ * asserted on in src/auth/jwt.test.ts; nothing that ships calls it. */
 export declare function decodeSegment(segment: string): Record<string, unknown>;
 /**
  * Build a signed JWT bearer assertion for the OAuth 2.0 service-account flow

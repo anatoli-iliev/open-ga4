@@ -1,5 +1,4 @@
 import { type FilterCondition } from "../ga4/filters.js";
-import { PRESET_IDS } from "../ga4/presets.js";
 import type { Ga4Runtime } from "../runtime.js";
 type ReportOutcome = {
     markdown: string;
@@ -40,4 +39,4 @@ export type QueryParams = {
     limit?: number;
 };
 export declare function runQuery(runtime: Ga4Runtime, params: QueryParams, signal?: AbortSignal): Promise<ReportOutcome>;
-export { PRESET_IDS };
+export {};

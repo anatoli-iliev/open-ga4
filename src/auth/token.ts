@@ -25,8 +25,6 @@ export type AccessToken = {
 
 export type TokenProvider = {
   getAccessToken(signal?: AbortSignal): Promise<string>;
-  /** Drop the cached token so the next call re-authenticates. */
-  invalidate(): void;
 };
 
 export type TokenProviderOptions = {
@@ -103,9 +101,6 @@ export function createTokenProvider(
       }
       cached = await inFlight;
       return cached.value;
-    },
-    invalidate(): void {
-      cached = undefined;
     },
   };
 }

@@ -29,9 +29,6 @@ metadata:
         description: >-
           Google's standard variable, read as a fallback so an existing gcloud
           setup keeps working.
-      - name: NO_COLOR
-        required: false
-        description: Set to any value to disable coloured output.
       - name: GA4_REDACT
         required: false
         description: >-

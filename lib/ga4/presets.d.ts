@@ -29,7 +29,4 @@ export type Preset = {
     note?: string;
 };
 export declare const PRESETS: readonly Preset[];
-export declare const PRESET_IDS: string[];
 export declare function findPreset(id: string): Preset | undefined;
-/** One line per preset, for the tool description the model reads. */
-export declare function describePresets(kind?: Preset["kind"]): string;

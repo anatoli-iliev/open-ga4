@@ -61,7 +61,7 @@ export async function main(
   const runtime = createRuntime({ config, env, onWarning: (m) => warnings.push(m) });
 
   try {
-    const result = await dispatch(runtime, parsed, env);
+    const result = await dispatch(runtime, parsed);
     for (const warning of warnings) streams.err(`warning: ${warning}\n`);
     streams.out(result.endsWith("\n") ? result : `${result}\n`);
     return EXIT.OK;
@@ -226,7 +226,7 @@ function jsonFlag(flags: Flags): boolean {
  * Kept in this file, not split out: this mapping is what a reviewer most
  * needs to see in one place.
  */
-export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs, _env: NodeJS.ProcessEnv): Promise<string> {
+export async function dispatch(runtime: Ga4Runtime, parsed: CommandArgs): Promise<string> {
   const { command, positional, flags } = parsed;
   // Read unconditionally, before the switch, so every command's flags object
   // is touched regardless of which branch runs below (src/cli/main.test.ts's

@@ -119,17 +119,6 @@ describe("caching", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("re-authenticates after invalidate()", async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => tokenResponse());
-    const provider = createTokenProvider(SERVICE_ACCOUNT, { fetchImpl, now: () => 1000 });
-
-    await provider.getAccessToken();
-    provider.invalidate();
-    await provider.getAccessToken();
-
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
   it("collapses concurrent callers into a single exchange", async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => {
       await new Promise((resolve) => setTimeout(resolve, 5));

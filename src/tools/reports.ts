@@ -5,7 +5,7 @@ import { Ga4Error } from "../ga4/errors.js";
 import { formatReport } from "../ga4/format.js";
 import { buildFilters, type FilterCondition } from "../ga4/filters.js";
 import { applyRenames, assertRealtimeFields, assertWithinLimits, Ga4RequestError, LIMITS } from "../ga4/limits.js";
-import { findPreset, PRESETS, PRESET_IDS } from "../ga4/presets.js";
+import { findPreset, PRESETS } from "../ga4/presets.js";
 import { assertDimensionsAllowed, thresholdProneDimensions } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
 
@@ -412,5 +412,3 @@ export async function runQuery(
     metrics: metricRename.names,
   });
 }
-
-export { PRESET_IDS };
