@@ -150,7 +150,7 @@ description: >-
   pages, where visitors came from, what changed since last month, who is on the
   site right now. Read only, runs on your machine, no Python. Ask "how many
   visitors did I get last week" or "top pages last month".
-version: 1.0.0
+version: 0.1.0
 homepage: https://github.com/anatoli-iliev/open-ga4
 metadata:
   openclaw:

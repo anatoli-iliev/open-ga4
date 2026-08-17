@@ -43,11 +43,10 @@ openclaw skills install /path/to/open-ga4            # from a local clone
 Nothing has been released yet, so the ClawHub line becomes true at the first tagged
 release; the git and local-clone routes work today.
 
-There is no build step and nothing to `npm install`. Compiled JavaScript is committed in
-`lib/`, one file per source module, and a CI job rebuilds from `src/` and fails if the
-committed output differs by a byte. Every route above copies files, so all three produce a
-folder that runs. Node 22.22.3 or newer is the only requirement, and OpenClaw already needs
-it.
+No install route runs a build, so the plan is to commit the compiled JavaScript beside the
+source and have CI reject any drift between the two. That is the next change to land;
+until it does, the folder an install produces is not yet runnable. Node 22.22.3 or newer
+will be the only requirement, and OpenClaw already needs it.
 
 Then set one environment variable, and usually a second:
 

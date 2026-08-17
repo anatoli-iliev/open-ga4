@@ -77,7 +77,11 @@ take, so the packaging changed and the analytics core did not.
   response `Date` header and reported as clock skew rather than as a bad
   credential.
 - Relative date ranges are sent as GA4 relative tokens so Google resolves them
-  in the property's own time zone. Ranges end yesterday, never today.
+  in the property's own time zone. A range counted back in days (`last 7 days`,
+  `N days`) ends yesterday, never today, because today is partial and including
+  it makes a period comparison misleading. The "so far" ranges (`this week`,
+  `this month`, `this year`) do run to today and say so in their labels, as
+  does `today` itself.
 - Retired metric names are rewritten to their replacements
   (`conversions` becomes `keyEvents`) and the rewrite is reported.
 - Licensed MIT-0, matching what ClawHub serves, so the licence a user receives

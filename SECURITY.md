@@ -268,12 +268,14 @@ Git tag silently changes what the release pipeline runs.
   nobody should `npm install` it. Distribution is ClawHub and `git`, which copy the
   repository's own files.
 
-- **Committed build output, held honest by a test.** No install route runs a build, so
-  the JavaScript that runs is committed alongside the TypeScript it came from, one
-  readable file per source module. Committing build output is normally bad practice; it
-  is bought here with a CI job that recompiles from `src/` and fails if the committed
-  output differs by a byte, so the two cannot drift and a hand-edited artifact does not
-  survive a pull request.
+- **Committed build output, to be held honest by a test.** No install route runs a
+  build, so the JavaScript that runs has to be committed alongside the TypeScript it
+  came from, one readable file per source module. Committing build output is normally
+  bad practice, and the price of it is a CI job that recompiles from `src/` and fails if
+  the committed output differs by a byte, so the two cannot drift and a hand-edited
+  artifact does not survive a pull request. Neither the committed output nor that job
+  exists at this commit; both land with the next change, and this bullet becomes a
+  statement of fact rather than of intent when they do.
 
 **Provenance: intended, not yet in place.** Nothing has been released. This repository
 intentionally contains **no publish workflow**; a publish job that can fire on a push is

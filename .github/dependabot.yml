@@ -1,8 +1,9 @@
 version: 2
 
 updates:
-  # Runtime dependencies are one package (typebox). Everything else here is a
-  # devDependency, so most of these PRs only affect CI and local development.
+  # There are zero runtime dependencies. Everything npm knows about here is a
+  # devDependency, so every one of these PRs affects only CI and local
+  # development, never what a user installs.
   - package-ecosystem: npm
     directory: /
     schedule:
