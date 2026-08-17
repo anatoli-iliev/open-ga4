@@ -138,7 +138,19 @@ agree to.
   describing it;
 - a `GA4_`-prefixed environment variable named in the documentation that no shipped source
   file reads;
-- a claim about the number of runtime dependencies that disagrees with `package.json`;
+- a claim about the number of runtime dependencies that disagrees with `package.json`,
+  in the documentation or in `.github/dependabot.yml` and `.github/workflows/ci.yml`,
+  because a comment in repository config made that claim and outlived the dependency;
+- a retired tool name (`ga4_` plus report, compare, realtime, query, fields, diagnose or
+  properties) anywhere under `src/` or in the shipped documentation. They were tool names
+  under the plugin API and are commands now, so a message naming one sends a stuck user
+  to type something that does not exist;
+- this project calling itself a plugin: in the shipped source, the word at all; in the
+  documentation, only the present-tense self-reference, meaning the word directly after
+  "this", or after "the" and directly before a present-tense verb. Discussing the former
+  plugin in the past tense is deliberate and stays, which is why the documentation half
+  is narrow. This sentence does not spell either pattern out, so that the sweep does not
+  trip over the description of itself;
 - a backticked identifier shaped like a preset id that is not in `PRESETS`;
 - an `npm run` script that is not in `package.json`;
 - a `googleapis.com` host that is not in `ALLOWED_HOSTS`, apart from the two named in
@@ -152,9 +164,15 @@ agree to.
   with `package.json`;
 - anything in `requires.env`, which would report "needs setup" forever for the three
   credential sources that variable is not;
-- a command quoted in `SKILL.md` or `README.md` that `parseArgs` rejects, or a command name
-  that does not exist;
-- a command in `COMMANDS` that the decision table does not route to;
+- a command quoted in `SKILL.md` or `README.md` that `parseArgs` rejects;
+- a command name in the decision table or in the reference table that is not in
+  `COMMANDS`, or a command in `COMMANDS` that either table leaves out. Both tables are
+  checked, because an invented name in the reference section would reach a reader exactly
+  as easily as one in the decision table;
+- a flag documented against a command that does not accept it, or a flag a command
+  accepts that the flag table does not document, both checked against `KNOWN_FLAGS`.
+  `--help` is the one exception, because `parseArgs` handles it before it validates
+  flags at all;
 - a `blocked_on` value the code can emit that has no section in the setup tree, or a
   section for a value the code cannot emit;
 - an environment variable the code reads that the frontmatter does not declare, or the

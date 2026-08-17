@@ -78,26 +78,43 @@ export function readShippedDocs(): Array<{ file: string; text: string }> {
 }
 
 /**
- * Environment variables the shipped source reads, by scanning for `env.NAME`
- * and `env["NAME"]`.
+ * Environment variables the shipped source reads, in all three spellings the
+ * codebase could use them in: `env.NAME`, `env["NAME"]`, and the destructured
+ * `const { NAME } = process.env`.
  *
  * A scan rather than a list, because a list is a second place to forget. The
  * point of it is the comparison in `src/docs/skill.test.ts`: a variable this
  * finds that `SKILL.md` does not declare is a publishing problem, since
  * ClawHub's security review compares declared metadata against actual
  * behaviour.
+ *
+ * **`APPDATA` is filtered out of the result**, and it is the only thing that
+ * is. The reasoning is on `PLATFORM_VARIABLES` below; the exclusion is noted
+ * here because a caller reading only the name of this function would otherwise
+ * take the returned set for the complete answer, which it deliberately is not.
  */
 export function environmentVariablesRead(): Set<string> {
   const source = shippedSources()
     .map((file) => readFileSync(file, "utf8"))
     .join("\n");
-  const found = new Set<string>();
+
+  const names: string[] = [];
   for (const match of source.matchAll(/env[.[]"?([A-Z][A-Z0-9_]{2,})"?\]?/g)) {
-    if (!PLATFORM_VARIABLES.has(match[1]!)) {
-      found.add(match[1]!);
+    names.push(match[1]!);
+  }
+  // `const { GA4_X, NO_COLOR: colour } = process.env` reads two variables and
+  // matches none of the patterns above, so an undeclared read written this way
+  // would have walked straight past the three-way match.
+  for (const match of source.matchAll(/\{([^{}]*)\}\s*=\s*(?:process\.)?env\b/g)) {
+    for (const entry of match[1]!.split(",")) {
+      const name = entry.split(":")[0]!.replace(/\.\.\./, "").trim();
+      if (/^[A-Z][A-Z0-9_]{2,}$/.test(name)) {
+        names.push(name);
+      }
     }
   }
-  return found;
+
+  return new Set(names.filter((name) => !PLATFORM_VARIABLES.has(name)));
 }
 
 /**

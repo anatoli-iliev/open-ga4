@@ -235,10 +235,28 @@ describe("runtime dependencies", () => {
   // sentence while leaving the claim beneath it wrong is a mistake this
   // repository has recorded twice. Asserting the number against package.json
   // is what makes a prose-only fix impossible.
+  /**
+   * Repository configuration is in scope alongside the documentation, decided
+   * rather than assumed. A comment in `dependabot.yml` made this exact claim
+   * and outlived the dependency by a whole review cycle, because the first
+   * version of this test could only see the six documents. These files are
+   * read by contributors and by anyone auditing the supply chain, they are
+   * where a stale dependency claim is least likely to be noticed, and scanning
+   * two more paths costs nothing.
+   */
+  const REPOSITORY_CONFIG = [".github/dependabot.yml", ".github/workflows/ci.yml"];
+
   it("states a count that matches package.json wherever it states one", () => {
     const actual = runtimeDependencyCount();
+    const sources = [
+      ...readShippedDocs(),
+      ...REPOSITORY_CONFIG.map((file) => ({
+        file,
+        text: readFileSync(path.join(repoRoot, file), "utf8"),
+      })),
+    ];
     const wrong: string[] = [];
-    for (const { file, text } of readShippedDocs()) {
+    for (const { file, text } of sources) {
       for (const claimed of dependencyCountClaims(text)) {
         if (claimed !== actual) {
           wrong.push(`${file} claims ${claimed} runtime dependencies; package.json has ${actual}`);
@@ -343,6 +361,64 @@ describe("no references to the retired tool names", () => {
       for (const name of retired) {
         if (scanned.includes(name)) {
           offenders.push(`${file}: ${name}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("no references to this project as a plugin", () => {
+  /**
+   * Same class as the retired tool names, and it drifts the same way. A user
+   * reading "This plugin returns at most 1000 rows" is being told about
+   * something that does not exist, by the software itself, in the middle of an
+   * error.
+   *
+   * The shipped source is held to the strict form: the word does not appear at
+   * all. Every occurrence there was a self-reference, so there is nothing
+   * legitimate to carve out, and a whole-word ban is the version that cannot
+   * be argued with.
+   */
+  it("never calls itself a plugin anywhere in the shipped source", () => {
+    const offenders: string[] = [];
+    for (const file of shippedSources()) {
+      if (/\bplugins?\b/i.test(readFileSync(file, "utf8"))) {
+        offenders.push(path.relative(repoRoot, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The documentation is held to a narrower form, on purpose. These documents
+   * discuss the former plugin deliberately and in the past tense: what the
+   * plugin registration API could do, what died with the plugin config block,
+   * why D1 was reversed. Banning the noun would delete that history, which is
+   * the part worth keeping.
+   *
+   * What is banned is the present-tense self-reference: "this plugin", and
+   * "the plugin" followed by a verb in the present tense. Both spellings say
+   * that this project *is* a plugin, which is the false claim. "the plugin
+   * registration API" and "went away with the plugin" say what it *was*, and
+   * survive.
+   *
+   * The residual gap is deliberate and small: a sentence could still call this
+   * a plugin in some phrasing neither pattern matches. That is what review is
+   * for; this closes the two shapes it has actually taken.
+   */
+  const PRESENT_TENSE_SELF_REFERENCE = [
+    /\bthis plugin\b/i,
+    /\bthe plugin (?:is|are|does|do|ships|implements|returns|may|must|works|calls|reads|writes|uses|has|registers)\b/i,
+  ];
+
+  it("never calls itself a plugin in the present tense in shipped documentation", () => {
+    const offenders: string[] = [];
+    for (const { file, text } of readShippedDocs()) {
+      for (const pattern of PRESENT_TENSE_SELF_REFERENCE) {
+        const match = pattern.exec(text);
+        if (match) {
+          offenders.push(`${file}: ${match[0]}`);
         }
       }
     }

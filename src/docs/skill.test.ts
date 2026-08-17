@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { COMMANDS, parseArgs } from "../cli/args.js";
+import { COMMANDS, KNOWN_FLAGS, parseArgs } from "../cli/args.js";
 import { BLOCKED_ON_VALUES } from "../setup/state.js";
 import { environmentVariablesRead, repoRoot } from "../testing/files.test-support.js";
 
@@ -180,6 +180,63 @@ describe("SKILL.md commands", () => {
     expect(documentedCommands(README).length).toBeGreaterThan(0);
   });
 
+  /**
+   * The decision table is not the only place a command name is written down.
+   * The Reference section lists all seven again with a description, and an
+   * invented name there would have reached a reader exactly as easily.
+   */
+  it("lists every command in the reference table, and invents none", () => {
+    const reference = section(SKILL, "### Commands");
+    const listed = new Set<string>();
+    for (const match of reference.matchAll(/^\|\s*`([^`]+)`\s*\|/gm)) {
+      const head = tokenize(match[1]!)[0]!;
+      expect(COMMANDS, `the reference table lists "${head}", which is not a command`)
+        .toContain(head);
+      listed.add(head);
+    }
+    expect(listed).toEqual(new Set(COMMANDS));
+  });
+
+  /**
+   * The flag table against `KNOWN_FLAGS`, in both directions: a flag
+   * documented on a command that does not accept it sends an agent to an
+   * "unknown option" error, and a flag a command accepts but nobody wrote down
+   * is a capability the agent will never use.
+   *
+   * `--help` is the one documented flag with no `KNOWN_FLAGS` entry, because
+   * `parseArgs` handles it before it validates flags at all. It is excluded by
+   * name rather than by a loose rule.
+   */
+  it("documents exactly the flags each command accepts", () => {
+    const documented = new Map<string, Set<string>>(
+      COMMANDS.map((command) => [command, new Set<string>()]),
+    );
+    for (const line of section(SKILL, "### Flags").split("\n")) {
+      if (!line.startsWith("| `--")) {
+        continue;
+      }
+      const cells = line.split("|").map((cell) => cell.trim());
+      const flags = [...cells[1]!.matchAll(/--([a-z][a-z-]*)/g)].map((match) => match[1]!);
+      const targets = /\ball\b/.test(cells[2]!)
+        ? [...COMMANDS]
+        : cells[2]!.split(",").map((name) => name.trim());
+      for (const target of targets) {
+        expect(COMMANDS, `the flag table names "${target}", which is not a command`)
+          .toContain(target);
+        for (const flag of flags) {
+          if (flag !== "help") {
+            documented.get(target)!.add(flag);
+          }
+        }
+      }
+    }
+
+    for (const command of COMMANDS) {
+      expect(documented.get(command), `flags documented for ${command}`)
+        .toEqual(new Set(KNOWN_FLAGS[command]));
+    }
+  });
+
   it("writes the full invocation as node <skill-dir>/lib/cli.js, never a hardcoded path", () => {
     // A launcher script would arrive without its executable bit through
     // ClawHub's installer, and a hardcoded path is wrong for a --global
@@ -248,6 +305,16 @@ describe("SKILL.md environment variables", () => {
     );
     expect(inSpec.size).toBe(8);
     expect(declared).toEqual(inSpec);
+
+    // The rest of the spec's frontmatter block is a worked example of the file
+    // this test is checking, so it goes stale in exactly the same way. Its
+    // version outlived package.json's once already.
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+      name: string;
+      version: string;
+    };
+    expect(frontmatterBlock).toContain(`version: ${pkg.version}`);
+    expect(frontmatterBlock).toContain(`name: ${pkg.name}`);
   });
 
   it("gives the four privacy settings no command-line flag", () => {
