@@ -333,8 +333,9 @@ Read it line by line:
 - **Privacy settings**: redaction is on and person-identifying dimensions are blocked.
   These are the defaults; the line exists so the posture is visible rather than assumed.
 
-Checks run in dependency order, and only a missing or rejected credential stops the run:
-nothing after it can be checked without one. Everything else keeps going, so the
+Checks run in dependency order, and only a credential that cannot be found or read stops
+the run: nothing after it can be checked without one. (A key Google later rejects is not
+that case: it loads fine here and fails at the two checks that actually call Google.) Everything else keeps going, so the
 checklist shows the whole picture. (The one other check that can be missing rather than
 failing is the live report, which needs a property to have been chosen first.) Each
 failure prints a **Fix:** line under it naming the exact next action.

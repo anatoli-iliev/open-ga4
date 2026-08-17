@@ -43,8 +43,8 @@ take, so the packaging changed and the analytics core did not.
   and metrics defined on that property are found without a skill update.
 - `properties`: every property the credential can read, with its numeric id.
 - `doctor`: setup checks in dependency order, each naming its own fix. Only a
-  missing credential stops the run, because nothing after it can be checked
-  without one. With `--json`, the single next thing the user must do, as a
+  credential that cannot be found or read stops the run, because nothing after
+  it can be checked without one. With `--json`, the single next thing the user must do, as a
   `blocked_on` state with a link and the exact string to paste, plus a
   `warnings` array for anything worth saying that is blocking nothing.
 
@@ -85,10 +85,13 @@ take, so the packaging changed and the analytics core did not.
   every import either relative or a `node:` builtin. OAuth assertions are
   signed with `node:crypto`; the API is called with `fetch`.
 - Exit codes are a contract, since an agent reads them to decide what to say:
-  0 worked, 1 an internal failure nothing can name, 2 bad input, 3 setup
-  unfinished, 4 Google refused. Everything checked before a connection is
-  opened, including the privacy refusals, exits 2, so a decision made on this
-  machine is never reported as Google's.
+  0 worked, 1 an internal failure nothing can name, 2 the query is wrong, 3
+  setup unfinished, 4 Google refused for a reason that is not about the query.
+  The privacy refusals and every other check made before a connection is opened
+  exit 2, alongside Google's own "that query is invalid", because the answer to
+  both is to change the query; each message says which side it came from. A
+  property id that is not one (a measurement id, a tag or Ads id) exits 3, so
+  it lands in the setup conversation that already covers it.
 - Errors are diagnosed from Google's machine-readable `status` and `reason`
   fields, never from its message prose. Clock skew is detected from the
   response `Date` header and reported as clock skew rather than as a bad

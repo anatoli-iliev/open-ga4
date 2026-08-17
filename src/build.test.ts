@@ -76,6 +76,7 @@ describe(".clawhubignore, which decides what is published", () => {
       "scripts/",
       ".github/",
       ".superpowers/",
+      "docs/superpowers/",
     ]) {
       expect(patterns(), `${pattern} should not be published`).toContain(pattern);
     }
@@ -88,6 +89,11 @@ describe(".clawhubignore, which decides what is published", () => {
         expect(pattern, `${kept} must stay in the published bundle`).not.toBe(kept);
         expect(pattern, `${kept} must stay in the published bundle`)
           .not.toBe(kept.replace(/\/$/, ""));
+        // A directory pattern excludes everything under it, so `docs/` would
+        // take docs/DESIGN.md with it while matching neither check above.
+        if (pattern.endsWith("/")) {
+          expect(kept.startsWith(pattern), `${pattern} would exclude ${kept}`).toBe(false);
+        }
       }
     }
     // No pattern may reach into src/, and no pattern may exclude test files:

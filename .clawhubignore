@@ -37,3 +37,11 @@ scripts/
 .github/
 .superpowers/
 .sandbox/
+
+# The plans and specs for building the skill, as opposed to the design record
+# for the skill itself. docs/DESIGN.md ships and these do not, the same split
+# src/testing/files.test-support.ts already makes for the documentation tests:
+# these describe what was rejected and what changed on the way here, which is
+# repository history rather than anything a user or a reviewer of the skill
+# needs.
+docs/superpowers/

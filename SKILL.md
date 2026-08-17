@@ -356,19 +356,18 @@ useful answer than its checklist, which is why the setup tree above is keyed on 
 | Code | Means | Say |
 | --- | --- | --- |
 | 0 | Worked | The answer. A table with **zero rows also exits 0**: that is "no data for that period", a successful measurement of nothing, never a failure. |
-| 1 | Something broke and the skill cannot say what | Say plainly that it failed and what the message was. Do not produce a number. This one is not a statement about Google. |
-| 2 | Bad input, decided here, not by Google | Name the value that was rejected and what is accepted instead. Do not retry with a different guess. Some of these are the skill's own refusals rather than typos: a person-identifying dimension, a property outside the allowlist. The message names the environment variable that would change it, and only a person can set that. |
-| 3 | Setup incomplete | Go to the setup tree above. Never report this as "your analytics is broken"; nothing is broken, a step is unfinished. |
-| 4 | Google refused | The request reached Google and Google said no. Relay Google's own reason plus the fix the error already names. |
+| 1 | Something broke and the skill cannot say what | Say plainly that it failed and what the message was. Do not produce a number. Do not describe it as Google refusing: nothing here established that. |
+| 2 | The query is wrong | Name the value that was rejected and what is accepted instead. Do not retry with a different guess. Most of these are caught here before anything is sent (an unreadable date range, too many dimensions, a row limit out of range), and some are the skill's own refusals rather than typos: a person-identifying dimension, a property outside the allowlist. Those name the environment variable that would change it, and only a person can set that. Google's own "that query is invalid" lands here too, because the answer to both is the same: change the query. The message says which happened. |
+| 3 | Setup incomplete | Go to the setup tree above. Never report this as "your analytics is broken"; nothing is broken, a step is unfinished. A property id that is not a property id (a `G-XXXXXXXXXX` measurement id, a tag or Ads id) arrives here rather than as 2, because the fix is the same conversation the setup tree already has. |
+| 4 | Google refused | The request reached Google and Google said no for a reason that is not about the query: quota, a server error, access. Relay Google's own reason plus the fix the error already names. |
 
 Codes 3 and 4 are deliberately separate. "You have not finished setting this up" and
 "Google said no" call for completely different conversations, and merging them is how
 an unfinished setup gets reported as an outage.
 
-Codes 2 and 4 are separate for the same reason in the other direction. Everything the
-skill checks before it opens a connection (the date range, the property id, the row
-limit, the privacy rules) fails as 2. Never tell the user Google rejected something
-that never reached Google.
+The rule that matters across all of them: **never tell the user Google rejected
+something that never reached Google.** Every message says whether the check ran here
+or there, so read it before attributing the failure.
 
 Zero rows is worth repeating because it is the one people get wrong: a date range
 before the property started collecting returns an empty, entirely correct answer.

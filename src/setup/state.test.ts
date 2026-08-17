@@ -148,8 +148,14 @@ describe("setupStateFrom", () => {
   });
 
   it("carries a warning alongside a blocking step too, rather than losing it", () => {
+    // A shape runDiagnose really produces: credentials load, the Admin API is
+    // off, and the privacy check still runs and still fails. (A *credentials*
+    // failure could not be paired with it, because that one returns before the
+    // privacy check is ever appended.)
     const state = setupStateFrom([
-      fail("credentials", "Google credentials", "CREDENTIALS_MISSING"),
+      pass("credentials", "Google credentials"),
+      fail("admin_api", "Admin API and property access", "ADMIN_API_DISABLED"),
+      fail("property_selection", "Property selection", "NO_PROPERTY"),
       {
         id: "privacy_settings" as const,
         label: "Privacy settings",
@@ -157,7 +163,7 @@ describe("setupStateFrom", () => {
         detail: "redaction is turned OFF",
       },
     ]);
-    expect(state.blocked_on).toBe("no_credentials");
+    expect(state.blocked_on).toBe("admin_api_disabled");
     expect(state.warnings).toEqual(["redaction is turned OFF"]);
   });
 
