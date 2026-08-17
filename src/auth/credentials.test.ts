@@ -250,7 +250,7 @@ describe("GA4_CREDENTIALS", () => {
   // not a mis-pasted key: only at that point does the placeholder stop
   // earning its keep, because there is nothing left for it to protect
   // against and something real for it to cost (which key file was used, the
-  // one thing ga4_diagnose needs to say for a stale-path failure to be
+  // one thing doctor needs to say for a stale-path failure to be
   // findable).
   it("shows the real path once the value is confirmed to be a credential file", async () => {
     const result = await resolveCredentials({

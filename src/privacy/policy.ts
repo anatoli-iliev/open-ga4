@@ -181,7 +181,7 @@ export function normalizePropertyId(input: string): string {
   const value = input.trim();
   if (!value) {
     throw new PolicyError(
-      "No GA4 property id. Run ga4_diagnose to list the properties this credential can read.",
+      "No GA4 property id. Run properties to list the ones this credential can read.",
     );
   }
 
@@ -196,19 +196,19 @@ export function normalizePropertyId(input: string): string {
       `"${value}" is a measurement id, which identifies a data stream rather than a property, ` +
         `and the reporting API cannot use it. You need the numeric property id: the ~9-digit ` +
         `number shown under Admin > Property details, or in the URL as p123456789. ` +
-        `Run ga4_diagnose to list yours.`,
+        `Run properties to list yours.`,
     );
   }
 
   if (STREAM_OR_TAG_ID.test(value)) {
     throw new PolicyError(
       `"${value}" is a Google tag or Ads id, not a GA4 property id. ` +
-        `Run ga4_diagnose to list the numeric property ids this credential can read.`,
+        `Run properties to list the numeric property ids this credential can read.`,
     );
   }
 
   throw new PolicyError(
     `"${value}" is not a GA4 property id. Expected a numeric id such as 123456789. ` +
-      `Run ga4_diagnose to list the properties this credential can read.`,
+      `Run properties to list the ones this credential can read.`,
   );
 }

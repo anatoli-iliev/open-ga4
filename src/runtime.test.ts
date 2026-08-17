@@ -39,7 +39,7 @@ describe("resolveProperty", () => {
       }
     })();
     expect(error?.message).toMatch(/No GA4 property specified/);
-    expect(error?.fix).toMatch(/ga4_diagnose/);
+    expect(error?.fix).toMatch(/Run properties/);
     expect(error?.fix).toMatch(/GA4_PROPERTY_ID/);
   });
 });

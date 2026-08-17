@@ -16,14 +16,14 @@ function capture() {
 describe("createAuditLogger", () => {
   it("writes one JSON line per call, to the configured path", async () => {
     const { logger, lines } = capture();
-    await logger.record({ tool: "ga4_report", propertyId: "123456789" });
+    await logger.record({ tool: "report", propertyId: "123456789" });
 
     expect(lines).toHaveLength(1);
     expect(lines[0]!.path).toBe("/tmp/ga4-audit.log");
     expect(lines[0]!.line.endsWith("\n")).toBe(true);
     expect(JSON.parse(lines[0]!.line)).toEqual({
       time: "2026-08-14T09:00:00.000Z",
-      tool: "ga4_report",
+      tool: "report",
       property: "123456789",
     });
   });
@@ -31,7 +31,7 @@ describe("createAuditLogger", () => {
   it("records the question: fields, range and a row count", async () => {
     const { logger, lines } = capture();
     await logger.record({
-      tool: "ga4_query",
+      tool: "query",
       propertyId: "123456789",
       dimensions: ["pagePath"],
       metrics: ["sessions"],
@@ -49,7 +49,7 @@ describe("createAuditLogger", () => {
 
   it("records no report values, only a count of them", async () => {
     const { logger, lines } = capture();
-    await logger.record({ tool: "ga4_report", propertyId: "123456789", rows: 3 });
+    await logger.record({ tool: "report", propertyId: "123456789", rows: 3 });
 
     const entry = JSON.parse(lines[0]!.line) as Record<string, unknown>;
     expect(Object.keys(entry).sort()).toEqual(["property", "rows", "time", "tool"]);
@@ -59,7 +59,7 @@ describe("createAuditLogger", () => {
 
   it("omits empty field lists rather than logging noise", async () => {
     const { logger, lines } = capture();
-    await logger.record({ tool: "ga4_report", propertyId: "1", dimensions: [], metrics: [] });
+    await logger.record({ tool: "report", propertyId: "1", dimensions: [], metrics: [] });
     expect(JSON.parse(lines[0]!.line)).not.toHaveProperty("dimensions");
   });
 
@@ -73,7 +73,7 @@ describe("createAuditLogger", () => {
       onError,
     });
 
-    await expect(logger.record({ tool: "ga4_report", propertyId: "1" })).resolves.toBeUndefined();
+    await expect(logger.record({ tool: "report", propertyId: "1" })).resolves.toBeUndefined();
     expect(onError).toHaveBeenCalledWith(expect.stringContaining("/nope/audit.log"));
   });
 });

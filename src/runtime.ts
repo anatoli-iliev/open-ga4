@@ -106,8 +106,8 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
         throw new Ga4Error(
           "NO_PROPERTY",
           "No GA4 property specified, and no default is configured.",
-          "Pass property_id, or set the GA4_PROPERTY_ID environment variable. " +
-            "Run ga4_diagnose to list the properties this credential can read.",
+          "Pass --property, or set the GA4_PROPERTY_ID environment variable. " +
+            "Run properties to list the ones this credential can read.",
         );
       }
       const propertyId = normalizePropertyId(candidate);

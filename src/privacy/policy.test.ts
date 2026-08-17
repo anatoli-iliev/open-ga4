@@ -139,7 +139,7 @@ describe("normalizePropertyId", () => {
   });
 
   it("points at a tool that exists when the input is empty", () => {
-    expect(() => normalizePropertyId("   ")).toThrow(/ga4_diagnose/);
+    expect(() => normalizePropertyId("   ")).toThrow(/Run properties/);
   });
 
   it("rejects something too short to be a property id", () => {

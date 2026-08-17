@@ -288,6 +288,68 @@ describe("no references to the retired plugin config path", () => {
   });
 });
 
+describe("no references to the retired tool names", () => {
+  /**
+   * The seven names below, each with a `ga4_` prefix, were tool names under
+   * the plugin API. They are commands now, so a message naming one tells a
+   * stuck user to run something that does not exist, and an error message is
+   * the most load-bearing documentation in the product: it fires at the moment
+   * somebody is stuck and has nowhere else to look.
+   *
+   * Same shape as the plugins.entries sweep above, and for the same reason:
+   * closing the class beats fixing the instances. Seven error messages were
+   * found by hand once; the eighth would not have been.
+   *
+   * Scans every `.ts` under `src/`, tests included: a test name or a fixture
+   * naming a retired tool is the same drift, and there is no comment here that
+   * needs to spell one out.
+   */
+  const retired = ["report", "compare", "realtime", "query", "fields", "diagnose", "properties"]
+    // Assembled rather than written out, so this sweep does not match its own
+    // source. Nothing else in this file spells a retired name.
+    .map((name) => `ga4_${name}`);
+
+  /**
+   * The one occurrence that is not ours. `README.md` cites the query script
+   * in `jdrhyne/agent-skills` as a verified fact about that project, with a
+   * link to the repository it lives in. It is a path in somebody else's
+   * project, quoted as evidence, and rewriting it would make the claim false.
+   *
+   * Built from `retired` rather than written out, for the same reason as
+   * above.
+   */
+  const FOREIGN_CITATIONS = [`scripts/${retired.find((name) => name.endsWith("query"))!}.py`];
+
+  it("names no retired tool anywhere in src/", () => {
+    const offenders: string[] = [];
+    for (const file of listFiles(path.join(repoRoot, "src"), ".ts")) {
+      const text = readFileSync(file, "utf8");
+      for (const name of retired) {
+        if (text.includes(name)) {
+          offenders.push(`${path.relative(repoRoot, file)}: ${name}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("names no retired tool anywhere in the shipped documentation", () => {
+    const offenders: string[] = [];
+    for (const { file, text } of readShippedDocs()) {
+      let scanned = text;
+      for (const citation of FOREIGN_CITATIONS) {
+        scanned = scanned.split(citation).join("");
+      }
+      for (const name of retired) {
+        if (scanned.includes(name)) {
+          offenders.push(`${file}: ${name}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("documented environment variables", () => {
   /**
    * Replaces the deleted check that validated `plugins.entries.ga4.config`

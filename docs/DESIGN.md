@@ -136,8 +136,8 @@ Splitting those two rather than putting a preset argument alongside optional
 value, which is the whole point: a model that only has to pick a preset id
 cannot pick an incompatible dimension/metric pair.
 
-`properties` was in the first draft, was folded into `ga4_diagnose`, and is
-separate again. The original reason for folding it in was that every tool
+`properties` was in the first draft, was folded into the diagnostic tool, and
+is separate again. The original reason for folding it in was that every tool
 schema is spent from the context window of every conversation whether it is
 used or not; a command line costs nothing until it is run, and setup needs
 property discovery on its own, before any report is possible.

@@ -213,11 +213,10 @@ contains `writeFile`, `appendFile`, `createWriteStream` or `mkdir`.
 **The audit log is the one exception, and it is off by default.** Set the
 `GA4_AUDIT_LOG` environment variable to a path and the skill appends one JSON line per
 report the agent runs (`report`, `compare`, `live` and `query`), recording the time,
-the property id, the operation, the dimensions and metrics asked for, the date range,
+the property id, the command, the dimensions and metrics asked for, the date range,
 and how many rows came back. It records no response bodies, no row values and no
-totals: a count of rows, never the rows. The operation appears in the log's `tool`
-field under the internal names `ga4_report`, `ga4_compare`, `ga4_realtime` and
-`ga4_query`, which are what the four commands are called inside the code. `fields`,
+totals: a count of rows, never the rows. The log's `tool` field holds the command name
+exactly as it is typed, so a line reads back as the thing that was run. `fields`,
 `properties` and `doctor` are not logged. The log covers the reports the agent asked
 for, not setup and discovery, and `doctor` does run one live `activeUsers` query as its
 Data API check, so if you need a record of every Data API call this file is not it.

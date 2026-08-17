@@ -184,7 +184,7 @@ describe("credential containment", () => {
   it("handles a non-HTTP failure without leaking anything", () => {
     const error = diagnose(new Error("socket hang up"), { now });
     expect(error.code).toBe("UNEXPECTED");
-    expect(error.fix).toContain("ga4_diagnose");
+    expect(error.fix).toContain("Run doctor");
   });
 });
 

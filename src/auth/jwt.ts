@@ -23,7 +23,7 @@ function base64url(input: Buffer | string): string {
   return (typeof input === "string" ? Buffer.from(input, "utf8") : input).toString("base64url");
 }
 
-/** Decode one segment of a JWT. Exported for tests and for `ga4_diagnose`. */
+/** Decode one segment of a JWT. Exported for tests and for `doctor`. */
 export function decodeSegment(segment: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as Record<string, unknown>;
 }
