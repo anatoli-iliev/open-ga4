@@ -10,6 +10,12 @@ Nothing has been released yet. The 0.1.0 entry below describes what the first
 release will be; it is kept up to date rather than frozen, because there is no
 published artifact for it to be a record of.
 
+A GitHub Actions workflow (`.github/workflows/release.yml`) now runs whenever a
+GitHub release is published: it verifies the build, then publishes to ClawHub with
+the source commit recorded. It has not run yet, since nothing has been released
+under this name; whoever cuts the first release is the one who finds out whether it
+works.
+
 ## [0.1.0] - 2026-08-14
 
 First release. An OpenClaw skill: a folder with `SKILL.md` at its root and

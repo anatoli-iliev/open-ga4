@@ -42,6 +42,28 @@ jobs:
             exit 1
           fi
 
+      # A GitHub release's tag is any string a maintainer typed; only a
+      # leading `v` is stripped before it becomes the published version.
+      # Whether `clawhub` rejects something malformed is server-side and not
+      # something this repository can test or assume, so this fails first,
+      # naming the exact bad tag, rather than letting a typo reach the
+      # registry and be discovered from a listing. Semver's own prerelease
+      # and build-metadata suffixes are both allowed (`1.2.3-beta.1+build.5`
+      # is valid), because a real prerelease version string is not the same
+      # thing as the `prerelease` flag checked in the next step: a tag can be
+      # plain `v1.2.3` and still be marked "this is a pre-release" in the
+      # GitHub UI.
+      - name: Validate the release version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if ! [[ "$version" =~ $semver ]]; then
+            echo "::error::'$GITHUB_REF_NAME' is not a valid version once the leading v is stripped ('$version'). Refusing to publish a malformed version to the registry."
+            exit 1
+          fi
+          echo "Version '$version' is valid semver."
+
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -97,15 +119,27 @@ jobs:
       # not inherited from anywhere else. The built-in GITHUB_TOKEN, granted
       # read-only access per the permissions block above, is enough to read a
       # release body.
+      #
+      # GitHub fires `release: published` for prereleases too: `prereleased`
+      # is a separate event type that exists alongside `published`, not
+      # instead of it, so marking a release "pre-release" in the GitHub UI
+      # does not stop this workflow from running. Hardcoding `--tags latest`
+      # here would alias a beta as the default `openclaw skills install
+      # @anatoli-iliev/open-ga4` gets. `clawhub skill publish --help`
+      # documents `--tags` as "Comma-separated tags (default: "latest")",
+      # an arbitrary string, not a fixed set, so a prerelease is tagged
+      # `prerelease` instead of being skipped: it still reaches the registry,
+      # installable by that tag, just never as the default.
       - name: Publish to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAWHUB_TAGS: ${{ github.event.release.prerelease && 'prerelease' || 'latest' }}
         run: |
           set -euo pipefail
           npx clawhub@0.23.3 skill publish "$GITHUB_WORKSPACE" \
             --slug open-ga4 --name "Open GA4" \
-            --version "${GITHUB_REF_NAME#v}" --tags latest \
+            --version "${GITHUB_REF_NAME#v}" --tags "$CLAWHUB_TAGS" \
             --source-repo "$GITHUB_REPOSITORY" \
             --source-ref "$GITHUB_REF_NAME" \
             --source-commit "$GITHUB_SHA" \
