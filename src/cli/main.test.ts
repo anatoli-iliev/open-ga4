@@ -696,3 +696,51 @@ describe("every KNOWN_FLAGS entry reaches a real field", () => {
     });
   }
 });
+
+/**
+ * "There is no path out of this process that skips redactText."
+ *
+ * That sentence is in a comment at the top of main(), and it was not true when
+ * it was written: the success path on stdout printed dispatch's result raw. It
+ * was not leaking anything, because what arrives there is rows that redaction
+ * already cleaned plus prose this skill wrote, and doctor's checks redact at
+ * construction instead. But an invariant that holds only because of what the
+ * callers happen to pass is not an invariant, and the next person to add a
+ * message on that path had no way to know it was the one write without a net.
+ *
+ * Checked structurally, against the source, for the reason src/privacy/surface.test.ts
+ * checks the built bundle rather than intentions: a claim about every path is
+ * not something a reader can keep verifying by eye, and the failure mode is a
+ * path that gets added later.
+ */
+describe("every write to a stream in main()", () => {
+  /**
+   * The two writes whose entire content is a constant defined in this file:
+   * the usage text and the version string. Nothing outside the file reaches
+   * either, so there is nothing in them to redact. Named individually, so a
+   * third constant cannot join them without this list being edited.
+   */
+  const CONSTANT_WRITES = ["USAGE", "`${VERSION}\\n`"];
+
+  it("passes its text through redactText, or writes a constant from this file", () => {
+    const source = readFileSync("src/cli/main.ts", "utf8");
+    const writes = [...source.matchAll(/streams\.(?:out|err)\((.*)\);/g)].map((match) =>
+      match[1]!.trim(),
+    );
+
+    // The count is asserted so this cannot pass by matching nothing at all.
+    expect(writes.length).toBe(7);
+    const unprotected = writes.filter(
+      (argument) => !argument.includes("redactText(") && !CONSTANT_WRITES.includes(argument),
+    );
+    expect(unprotected).toEqual([]);
+  });
+
+  it("redacts the success path on stdout, not only the error paths", () => {
+    const source = readFileSync("src/cli/main.ts", "utf8");
+    // The one write that follows a successful dispatch. Pinned separately from
+    // the sweep above because this is the write that was missing, and a sweep
+    // over seven call sites would still pass if this one were the constant kind.
+    expect(source).toMatch(/streams\.out\(redactText\(result\./);
+  });
+});
