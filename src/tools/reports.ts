@@ -233,6 +233,77 @@ export async function runReport(
   });
 }
 
+/**
+ * Which of the two named date ranges actually produced a row.
+ *
+ * A multi-range report gets a `dateRange` dimension column appended by
+ * Google, with each row labelled by the range's own `name` (here "current"
+ * or "previous"). When a range covers zero matching activity, Google omits
+ * its row entirely rather than sending a row of zeros, so inspecting which
+ * names actually appear is the only way to tell a genuine, flat comparison
+ * apart from one side having had nothing to compare.
+ */
+function presentDateRanges(response: RunReportResponse): Set<string> {
+  const index = (response.dimensionHeaders ?? []).findIndex((header) => header.name === "dateRange");
+  const present = new Set<string>();
+  if (index < 0) {
+    return present;
+  }
+  for (const row of response.rows ?? []) {
+    const value = row.dimensionValues?.[index]?.value;
+    if (value) {
+      present.add(value);
+    }
+  }
+  return present;
+}
+
+/**
+ * The caveat describing what was actually compared.
+ *
+ * Observed live: a property with zero traffic in the period before the
+ * current window made Google omit the `previous` row entirely. rowsAvailable
+ * was 1, but the old fixed text ("Comparing X against Y immediately before
+ * it.") still asserted a completed comparison over the single surviving row,
+ * with nothing saying the other side was empty. An agent relaying that would
+ * report a comparison that never happened, and a reader could reasonably take
+ * the one row as the result of comparing. Rather than supplementing that
+ * line, this replaces it whenever a side is missing: no zero row is
+ * fabricated (a missing row means Google reported nothing for that range,
+ * and inventing a 0 would present an absence as a measurement), and both
+ * sides empty is stated as a successful measurement of nothing, not a
+ * failure.
+ */
+function comparisonNote(current: Ga4DateRange, previous: Ga4DateRange, response: RunReportResponse): string {
+  const present = presentDateRanges(response);
+  const hasCurrent = present.has("current");
+  const hasPrevious = present.has("previous");
+
+  if (hasCurrent && hasPrevious) {
+    return `Comparing ${current.label} against the ${previous.label} immediately before it.`;
+  }
+  if (hasCurrent && !hasPrevious) {
+    return (
+      `Google returned no data at all for the "previous" period (${previous.label}), so there is ` +
+      `nothing to compare against. This is not a comparison: everything below is the "current" ` +
+      `period (${current.label}) standing on its own.`
+    );
+  }
+  if (!hasCurrent && hasPrevious) {
+    return (
+      `Google returned no data at all for the "current" period (${current.label}), so there is ` +
+      `nothing to compare it against. This is not a comparison: everything below is the "previous" ` +
+      `period (${previous.label}) standing on its own.`
+    );
+  }
+  return (
+    `Google returned no data at all for either period: not the "current" period (${current.label}) ` +
+    `nor the "previous" period (${previous.label}) immediately before it. There is nothing to compare ` +
+    `and nothing to show. That is a successful measurement of zero matching activity in both windows, ` +
+    `not a failure.`
+  );
+}
+
 export type CompareParams = {
   report: string;
   property_id?: string;
@@ -289,7 +360,7 @@ export async function runCompare(
   );
 
   const notes = [
-    `Comparing ${current.label} against the ${previous.label} immediately before it.`,
+    comparisonNote(current, previous, response),
     ...(current.timezoneNote ? [current.timezoneNote] : []),
   ];
 

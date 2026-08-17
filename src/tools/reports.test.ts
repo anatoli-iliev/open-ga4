@@ -203,6 +203,30 @@ describe("the report command", () => {
   });
 });
 
+/**
+ * A realistic `compare` response: a `dateRange` dimension column, appended by
+ * Google to a multi-range report, labels each row "current" or "previous" (the
+ * names given on the request). `rowFor` builds one row for a given range name;
+ * omitting a range's row from `rows` is exactly how Google represents "this
+ * range matched nothing", which is the shape defect 1 is about.
+ */
+function rowFor(dateRange: "current" | "previous", channel: string, sessions: string, activeUsers: string) {
+  return {
+    dimensionValues: [{ value: channel }, { value: dateRange }],
+    metricValues: [{ value: sessions }, { value: activeUsers }],
+  };
+}
+
+const COMPARE_SAMPLE: RunReportResponse = {
+  dimensionHeaders: [{ name: "sessionDefaultChannelGroup" }, { name: "dateRange" }],
+  metricHeaders: [
+    { name: "sessions", type: "TYPE_INTEGER" },
+    { name: "activeUsers", type: "TYPE_INTEGER" },
+  ],
+  rows: [rowFor("current", "Organic Search", "34", "8"), rowFor("previous", "Organic Search", "20", "5")],
+  rowCount: 2,
+};
+
 describe("the compare command", () => {
   it("asks for two non-overlapping ranges of equal length", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE);
@@ -215,10 +239,108 @@ describe("the compare command", () => {
     expect(ranges[1]!.endDate < ranges[0]!.startDate.replace("daysAgo", "")).toBeTruthy();
   });
 
-  it("says what is being compared with what", async () => {
-    const { runtime } = stubRuntime(SAMPLE);
+  it("says what is being compared with what, when both periods returned rows", async () => {
+    // The control: a response with both a "current" and a "previous" row
+    // present is exactly the case where the old fixed caveat was correct, and
+    // must stay correct after the fix. If this stopped matching, the fix
+    // would be firing on responses it should leave alone.
+    const { runtime } = stubRuntime(COMPARE_SAMPLE);
     const result = await runCompare(runtime, { report: "channels" });
     expect(result.markdown).toMatch(/Comparing last 28 days against the previous 28 days/);
+    expect(result.markdown).not.toMatch(/no data/);
+  });
+
+  /**
+   * Observed live: a property with zero traffic before the current window
+   * made Google omit the "previous" row entirely (rowsAvailable was 1), and
+   * the caveat still said "Comparing X against Y" over that single row, with
+   * nothing saying the other side was empty. An agent relaying that would
+   * report a comparison that never happened.
+   */
+  it("names the previous period when Google omitted its row entirely", async () => {
+    const { runtime } = stubRuntime({
+      ...COMPARE_SAMPLE,
+      rows: [rowFor("current", "Organic Search", "34", "8")],
+      rowCount: 1,
+    });
+    const result = await runCompare(runtime, { report: "channels" });
+
+    // The misleading line is gone, not merely supplemented.
+    expect(result.markdown).not.toMatch(/^Comparing .* against .* immediately before it\.$/m);
+    // The absent side is named, using the same label ("previous") the table
+    // itself uses in its dateRange column.
+    expect(result.markdown).toMatch(/"previous" period \(previous 28 days\)/);
+    expect(result.markdown).toMatch(/not a comparison/);
+    // No fabricated zero row for the missing side: exactly the one row Google
+    // actually returned is on the table, nothing invented to fill the gap.
+    expect(result.markdown).toContain("| Organic Search | current | 34 | 8 |");
+    expect(result.markdown).not.toContain("| Organic Search | previous |");
+    expect((result.details as { rowsAvailable: number }).rowsAvailable).toBe(1);
+  });
+
+  it("reproduces the exact live incident: overview, one surviving row, no fabricated zero", async () => {
+    // The literal shape observed live: `overview` has no breakdown dimension
+    // of its own, so `dateRange` is the only dimension column, and the
+    // property had traffic in the current 28 days but none in the 28 before
+    // it. Google's response was exactly one row, labelled "current", with
+    // rowCount 1.
+    const { runtime } = stubRuntime({
+      dimensionHeaders: [{ name: "dateRange" }],
+      metricHeaders: [
+        { name: "activeUsers", type: "TYPE_INTEGER" },
+        { name: "newUsers", type: "TYPE_INTEGER" },
+        { name: "sessions", type: "TYPE_INTEGER" },
+      ],
+      rows: [
+        {
+          dimensionValues: [{ value: "current" }],
+          metricValues: [{ value: "8" }, { value: "8" }, { value: "34" }],
+        },
+      ],
+      rowCount: 1,
+    });
+    const result = await runCompare(runtime, { report: "overview" });
+
+    expect((result.details as { rowsAvailable: number }).rowsAvailable).toBe(1);
+    expect(result.markdown).not.toMatch(/^Comparing .* against .* immediately before it\.$/m);
+    expect(result.markdown).toMatch(/"previous" period \(previous 28 days\)/);
+    expect(result.markdown).toMatch(/not a comparison/);
+    // Exactly the one row Google returned, nothing invented for "previous".
+    expect(result.markdown).toContain("| current | 8 | 8 | 34 |");
+    expect(result.markdown).not.toContain("| previous |");
+  });
+
+  it("names the current period when Google omitted its row entirely", async () => {
+    // Symmetric case: rare in practice (the current window is the one being
+    // asked about right now), but the detection is generic across which side
+    // is missing, so both directions are covered.
+    const { runtime } = stubRuntime({
+      ...COMPARE_SAMPLE,
+      rows: [rowFor("previous", "Organic Search", "20", "5")],
+      rowCount: 1,
+    });
+    const result = await runCompare(runtime, { report: "channels" });
+
+    expect(result.markdown).not.toMatch(/^Comparing .* against .* immediately before it\.$/m);
+    expect(result.markdown).toMatch(/"current" period \(last 28 days\)/);
+    expect(result.markdown).toMatch(/not a comparison/);
+    expect(result.markdown).not.toContain("| Organic Search | current |");
+  });
+
+  it("says so, without reading as a failure, when both periods returned nothing", async () => {
+    const { runtime } = stubRuntime({
+      ...COMPARE_SAMPLE,
+      rows: [],
+      rowCount: 0,
+    });
+    const result = await runCompare(runtime, { report: "channels" });
+
+    expect(result.markdown).toMatch(/no data at all for either period/);
+    expect(result.markdown).toMatch(/"current" period \(last 28 days\)/);
+    expect(result.markdown).toMatch(/"previous" period \(previous 28 days\)/);
+    expect(result.markdown).toMatch(/not a failure/);
+    expect(result.markdown).not.toMatch(/^Comparing .* against .* immediately before it\.$/m);
+    expect(result.markdown).toContain("_No rows._");
   });
 
   it("refuses a realtime preset, which has no previous period to compare against", async () => {
