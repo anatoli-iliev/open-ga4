@@ -9,16 +9,16 @@ import { describe, expect, it } from "vitest";
  *
  * The Data API has exactly three surfaces that return per-person rows:
  * `properties.audienceExports`, `properties.audienceLists`, and the Admin API's
- * `runAccessReport`. This plugin does not call them. That claim is worth
- * something only if it is checked, so it is checked here, against `dist/`,
- * which is what actually ships to users.
+ * `runAccessReport`. This skill does not call them. That claim is worth
+ * something only if it is checked, so it is checked here, against `lib/`,
+ * the committed compiled output, which is what actually ships to users.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const distDir = path.resolve(here, "../../dist");
+const libDir = path.resolve(here, "../../lib");
 const repoRoot = path.resolve(here, "../..");
 
-/** Hosts the plugin actually opens a connection to. The runtime guarantee is
+/** Hosts the skill actually opens a connection to. The runtime guarantee is
  * enforced by assertAllowedUrl in ga4/http.ts and tested there; the scan
  * below is defence in depth against a hardcoded URL reaching the bundle
  * unreviewed. */
@@ -38,7 +38,7 @@ const REFERENCED_ONLY = [
   "analytics.google.com", // Property access management link in setup/state.ts's no_property_grant state
 ];
 
-async function readDistSources(): Promise<Array<{ file: string; text: string }>> {
+async function readLibSources(): Promise<Array<{ file: string; text: string }>> {
   const out: Array<{ file: string; text: string }> = [];
   async function walk(dir: string): Promise<void> {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -46,11 +46,11 @@ async function readDistSources(): Promise<Array<{ file: string; text: string }>>
       if (entry.isDirectory()) {
         await walk(full);
       } else if (entry.name.endsWith(".js")) {
-        out.push({ file: path.relative(distDir, full), text: await readFile(full, "utf8") });
+        out.push({ file: path.relative(libDir, full), text: await readFile(full, "utf8") });
       }
     }
   }
-  await walk(distDir);
+  await walk(libDir);
   return out;
 }
 
@@ -59,7 +59,7 @@ describe("the shipped bundle", () => {
     const forbidden = ["audienceExport", "audienceList", "runAccessReport", "userDataRetention"];
     const offenders: string[] = [];
 
-    for (const { file, text } of await readDistSources()) {
+    for (const { file, text } of await readLibSources()) {
       for (const term of forbidden) {
         if (text.includes(term)) {
           offenders.push(`${file} contains "${term}"`);
@@ -72,7 +72,7 @@ describe("the shipped bundle", () => {
 
   it("requests no OAuth scope other than analytics.readonly", async () => {
     const scopes = new Set<string>();
-    for (const { text } of await readDistSources()) {
+    for (const { text } of await readLibSources()) {
       for (const match of text.matchAll(/https:\/\/www\.googleapis\.com\/auth\/[\w.-]+/g)) {
         scopes.add(match[0]);
       }
@@ -83,7 +83,7 @@ describe("the shipped bundle", () => {
   it("mentions no URL that is neither contacted nor a documented signpost", async () => {
     const allowed = new Set([...CONTACTED, ...REFERENCED_ONLY]);
     const hosts = new Set<string>();
-    for (const { text } of await readDistSources()) {
+    for (const { text } of await readLibSources()) {
       for (const match of text.matchAll(/https:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) {
         hosts.add(match[1]!.toLowerCase());
       }
@@ -114,7 +114,7 @@ describe("the shipped bundle", () => {
 
   it("writes nothing to disk outside the audit log", async () => {
     const offenders: string[] = [];
-    for (const { file, text } of await readDistSources()) {
+    for (const { file, text } of await readLibSources()) {
       if (file.startsWith("privacy/audit")) {
         continue;
       }

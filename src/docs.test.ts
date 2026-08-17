@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -482,6 +482,46 @@ describe("documented environment variables", () => {
       }
     }
     expect([...new Set(offenders)]).toEqual([]);
+  });
+});
+
+describe("the committed build output claim", () => {
+  /**
+   * README.md and SECURITY.md both used to describe `lib/` and the CI drift
+   * job in the future tense, because they were written before either
+   * existed. That was corrected once already (this exact sentence is what
+   * the correction produced), and the failure mode worth guarding against is
+   * the claim quietly outliving what it describes: a future revert of
+   * `lib/` or the CI job that leaves the assertive prose behind.
+   *
+   * So this does not just check that the claim is made (that part is
+   * pinned by the exact phrase both documents already share); it checks
+   * that making the claim is only possible while it stays true. If a change
+   * ever deletes `lib/cli.js` or the workflow job without also softening
+   * this sentence back to future tense, this is what fails, naming the
+   * thing that no longer matches what is claimed.
+   */
+  const CLAIM = "fails if the committed output differs by a byte";
+
+  it("is made in both README.md and SECURITY.md", () => {
+    const readme = readFileSync(path.join(repoRoot, "README.md"), "utf8");
+    const security = readFileSync(path.join(repoRoot, "SECURITY.md"), "utf8");
+    expect(readme).toContain(CLAIM);
+    expect(security).toContain(CLAIM);
+  });
+
+  it("cannot outlive lib/cli.js or the CI job that checks it", () => {
+    const readme = readFileSync(path.join(repoRoot, "README.md"), "utf8");
+    const security = readFileSync(path.join(repoRoot, "SECURITY.md"), "utf8");
+    if (!readme.includes(CLAIM) && !security.includes(CLAIM)) {
+      // Nothing to hold honest: neither document makes the claim any more.
+      return;
+    }
+    expect(existsSync(path.join(repoRoot, "lib/cli.js")), "lib/cli.js does not exist").toBe(true);
+    const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+    expect(ci, "ci.yml has no job asserting lib/ matches a fresh build").toContain(
+      "Assert lib/ matches a fresh build of src/",
+    );
   });
 });
 

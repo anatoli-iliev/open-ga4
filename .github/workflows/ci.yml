@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The plugin targets Node >=22.22.3. 22 is the floor, 24 is current.
+        # The skill targets Node >=22.22.3. 22 is the floor, 24 is current.
         node: ['22', '24']
 
     steps:
@@ -44,27 +44,36 @@ jobs:
         run: npm run typecheck
 
       # `pretest` builds first, because src/privacy/surface.test.ts asserts the
-      # privacy guarantees against dist/, the bundle that actually ships.
+      # privacy guarantees against lib/, the bundle that actually ships.
       - name: Test
         run: npm test
 
       - name: Build
         run: npm run build
 
-      - name: Assert dist/ ships no compiled tests
+      - name: Assert lib/ matches a fresh build of src/
         run: |
           set -euo pipefail
-          leaked="$(find dist -type f -name '*.test.js')"
-          if [ -n "$leaked" ]; then
-            echo "::error::dist/ contains compiled test files:"
-            echo "$leaked"
+          npm run check:lib
+          if [ -n "$(git status --porcelain lib/)" ]; then
+            echo "::error::lib/ is not a clean build of src/. Run npm run build and commit."
+            git --no-pager diff --stat lib/
             exit 1
           fi
-          echo "dist/ contains no *.test.js"
+          echo "lib/ matches src/"
+
+      - name: Assert lib/ ships no compiled tests
+        run: |
+          set -euo pipefail
+          leaked="$(find lib -type f -name '*.test.js')"
+          if [ -n "$leaked" ]; then
+            echo "::error::lib/ contains compiled test files:"; echo "$leaked"; exit 1
+          fi
 
 # There is deliberately no publish job here. A publish workflow that can fire on
-# a push is a foot-gun: one bad merge and a broken build is on the registry
-# forever. Releasing runs from its own workflow, gated on `on: release: types:
-# [published]`, with `permissions: id-token: write` for npm provenance
-# (`npm publish --provenance`), and it stays unarmed until an NPM_TOKEN secret
-# is deliberately configured on the repository.
+# a push is a foot-gun: one bad merge and a broken listing is on ClawHub forever.
+# Releasing, when it lands, runs from its own workflow, gated on
+# `on: release: types: [published]`, and runs `clawhub skill publish` with the
+# source repository, ref and commit passed explicitly, so the listing records
+# which commit produced it. Nothing here fires on a push, and no such workflow
+# exists yet.
