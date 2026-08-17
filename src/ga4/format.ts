@@ -124,8 +124,16 @@ function formatDuration(seconds: number): string {
  * attends to it. Applied once, upstream in `body` below, so both channels
  * share this single pass rather than each doing (or forgetting to do) their
  * own.
+ *
+ * Exported for the one place a value reaches text *outside* the fenced block:
+ * the caveat line saying what a report was filtered to, which interpolates a
+ * filter value into prose (src/ga4/filters.ts and src/tools/reports.ts). That
+ * value comes from the agent's own argv rather than from Google, so the risk
+ * is lower, but it is the single exception to the framing discipline the rest
+ * of this module enforces, and sharing this one function is what keeps the
+ * two from drifting.
  */
-function flattenNewlines(value: string): string {
+export function flattenNewlines(value: string): string {
   return value.replace(/[\r\n]+/g, " ");
 }
 

@@ -333,8 +333,10 @@ Read it line by line:
 - **Privacy settings**: redaction is on and person-identifying dimensions are blocked.
   These are the defaults; the line exists so the posture is visible rather than assumed.
 
-Checks run in dependency order and the run stops at the first thing that is genuinely
-blocking, so you get one fix to apply rather than a cascade of downstream noise. Each
+Checks run in dependency order, and only a missing or rejected credential stops the run:
+nothing after it can be checked without one. Everything else keeps going, so the
+checklist shows the whole picture. (The one other check that can be missing rather than
+failing is the live report, which needs a property to have been chosen first.) Each
 failure prints a **Fix:** line under it naming the exact next action.
 
 `doctor --json` answers a narrower question and is what the agent uses: instead of the

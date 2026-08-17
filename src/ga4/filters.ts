@@ -1,4 +1,5 @@
 import type { FilterExpression, MatchType } from "./client.js";
+import { flattenNewlines } from "./format.js";
 import { Ga4RequestError } from "./limits.js";
 
 /**
@@ -136,7 +137,15 @@ export function buildFilters(
     const isMetric = metrics.includes(condition.field);
     const expression = buildOne(condition, isMetric);
     (isMetric ? metricSide : dimensionSide).push(expression);
-    descriptions.push(`${condition.field} ${condition.op.replace(/_/g, " ")} "${condition.value}"`);
+    // Flattened, because this description is the one piece of caller-supplied
+    // text that ends up in prose rather than inside the fenced block a report's
+    // rows live in. A newline here would start a line of its own in the
+    // caveats list, which reads differently to a model than the same text
+    // mid-sentence.
+    descriptions.push(
+      `${flattenNewlines(condition.field)} ${condition.op.replace(/_/g, " ")} ` +
+        `"${flattenNewlines(condition.value)}"`,
+    );
   }
 
   const combine = (list: FilterExpression[]): FilterExpression | undefined => {

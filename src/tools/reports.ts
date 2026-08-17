@@ -2,7 +2,7 @@ import type { OrderBy, RunReportRequest, RunReportResponse } from "../ga4/client
 import { quotaWarning } from "../ga4/client.js";
 import { parseDateRange, precedingRange, type Ga4DateRange } from "../ga4/dates.js";
 import { Ga4Error } from "../ga4/errors.js";
-import { formatReport } from "../ga4/format.js";
+import { flattenNewlines, formatReport } from "../ga4/format.js";
 import { buildFilters, type FilterCondition } from "../ga4/filters.js";
 import { applyRenames, assertRealtimeFields, assertWithinLimits, Ga4RequestError, LIMITS } from "../ga4/limits.js";
 import { findPreset, PRESETS } from "../ga4/presets.js";
@@ -180,7 +180,10 @@ export async function runReport(
         stringFilter: { matchType: "CONTAINS", value: params.filter_contains, caseSensitive: false },
       },
     };
-    notes.push(`Filtered to rows whose ${field} contains "${params.filter_contains}".`);
+    // Flattened for the same reason as the query filter descriptions in
+    // src/ga4/filters.ts: this is prose, outside the fenced block, and the
+    // value came from argv.
+    notes.push(`Filtered to rows whose ${field} contains "${flattenNewlines(params.filter_contains)}".`);
   }
 
   assertWithinLimits({ dimensions: preset.dimensions, metrics: preset.metrics, limit });
