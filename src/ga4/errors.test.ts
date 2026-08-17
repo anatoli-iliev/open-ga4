@@ -197,6 +197,25 @@ describe("presentation", () => {
   });
 });
 
+describe("an HTTP status the taxonomy has no rule for", () => {
+  /**
+   * The corner SKILL.md's exit-1 row names by example. 400, 401, 403, 404, 429
+   * and 5xx all have their own branch; anything else falls to the catch-all,
+   * which exits 1 along with the genuinely internal failures. That makes exit 1
+   * the one code that is *usually* nothing to do with Google and occasionally
+   * is, so the row tells the agent to quote the message rather than assert a
+   * cause. Pinned here so the example in that row stays a fact.
+   */
+  it("says which status Google returned, and exits 1", () => {
+    // `now` injected like every other test here, so the clock-skew check that
+    // runs before everything else does not fire on the fixture's own Date.
+    const named = diagnose(googleError(451, {}), { now });
+    expect(named.code).toBe("UNEXPECTED");
+    expect(named.message).toContain("Google Analytics returned HTTP 451");
+    expect(exitCodeFor(named)).toBe(EXIT.UNEXPECTED);
+  });
+});
+
 describe("a request the egress guard refused", () => {
   /**
    * The one failure diagnose() sees that Google never heard about. It used to

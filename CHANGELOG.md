@@ -87,11 +87,13 @@ take, so the packaging changed and the analytics core did not.
 - Exit codes are a contract, since an agent reads them to decide what to say:
   0 worked, 1 an internal failure nothing can name, 2 the query is wrong, 3
   setup unfinished, 4 Google refused for a reason that is not about the query.
-  The privacy refusals and every other check made before a connection is opened
-  exit 2, alongside Google's own "that query is invalid", because the answer to
-  both is to change the query; each message says which side it came from. A
-  property id that is not one (a measurement id, a tag or Ads id) exits 3, so
-  it lands in the setup conversation that already covers it.
+  The code says what to do next, not which side of the network decided it: a
+  privacy refusal made here and Google's own "that query is invalid" both exit
+  2 because the answer to both is to change the query, while a measurement id
+  in GA4_PROPERTY_ID exits 3 (it is a setup step, and doctor has an answer for
+  it) and a request the egress guard blocked exits 1 (it can only mean a defect
+  in the skill). Every message says where the decision was made, so a refusal
+  made on this machine is never relayed as Google's.
 - Errors are diagnosed from Google's machine-readable `status` and `reason`
   fields, never from its message prose. Clock skew is detected from the
   response `Date` header and reported as clock skew rather than as a bad
