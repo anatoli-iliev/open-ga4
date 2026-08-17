@@ -231,6 +231,52 @@ describe("main", () => {
   });
 });
 
+/**
+ * `redactText` is the unconditional half of this skill's redaction: no setting
+ * turns it off, and CONTRIBUTING.md and CHANGELOG.md both say so. Two of the
+ * paths out of this process skipped it, and both carry text a person typed: a
+ * parse failure quotes the argv token it could not read, and a configuration
+ * warning quotes the value it ignored.
+ */
+describe("nothing this process prints escapes redactText", () => {
+  const FAKE_KEY = "-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkq-----END PRIVATE KEY-----";
+
+  it("redacts a key pasted where a command was expected", async () => {
+    const c = capture();
+    const code = await main([FAKE_KEY], {}, c.streams);
+    expect(code).toBe(EXIT.BAD_INPUT);
+    expect(c.err.join("")).not.toContain("MIIEvQIBADANBgkq");
+    expect(c.err.join("")).toContain("[redacted:private-key]");
+  });
+
+  it("redacts a key pasted into a setting that gets warned about", async () => {
+    // Fails at the measurement id, before runtime.client() is reached, so no
+    // credential resolution and no network on any machine.
+    const c = capture();
+    const code = await main(
+      ["report", "overview", "--property", "G-ABC12345"],
+      { GA4_PROPERTY_ALLOWLIST: FAKE_KEY },
+      c.streams,
+    );
+    expect(code).toBe(EXIT.SETUP_INCOMPLETE);
+    expect(c.err.join("")).not.toContain("MIIEvQIBADANBgkq");
+    expect(c.err.join("")).toContain("[redacted:private-key]");
+  });
+
+  it("prints a warning even when the command then fails", async () => {
+    // The warning explains why a setting was ignored. Dropping it exactly when
+    // the command fails hides the explanation at the moment it is needed.
+    const c = capture();
+    await main(
+      ["report", "overview", "--property", "G-ABC12345"],
+      { GA4_PROPERTY_ALLOWLIST: "not-a-property-id" },
+      c.streams,
+    );
+    expect(c.err.join("")).toContain("warning: Ignoring GA4_PROPERTY_ALLOWLIST entry");
+    expect(c.err.join("")).toContain("measurement id");
+  });
+});
+
 describe("--json", () => {
   it("doctor --json returns setupStateFrom's shape, not the markdown checklist", async () => {
     const { runtime } = fakeRuntime();
