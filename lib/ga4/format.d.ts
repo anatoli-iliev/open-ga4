@@ -73,6 +73,35 @@ export type FormattedReport = {
  * two from drifting.
  */
 export declare function flattenNewlines(value: string): string;
+/**
+ * Make a string safe to place between two `|` delimiters, by removing every
+ * character that could act as one.
+ *
+ * Substitution, not escaping, and that is the whole point. The previous
+ * implementation escaped, `cell.replace(/\|/g, "\\|")`, and it was exactly
+ * backwards for a value that already contained a backslash: `\|` became `\\|`,
+ * which GFM reads as an escaped backslash followed by a **live** pipe. The
+ * escape converted an already-harmless pipe into a working delimiter. A visitor
+ * loading any page on the site with `?q=pricing\|999999` on the end gets that
+ * string into `searchTerm` verbatim; it matches no personal-data pattern, so
+ * redaction passes it through, and `report search_terms` then emitted a
+ * five-field row under four headers. `eventCount` read 999999 instead of 3,
+ * every later metric shifted one place, and an agent relayed a fabricated
+ * figure to a non-technical user as a measured number. Same reach through
+ * `pagePathPlusQueryString`, `landingPagePlusQueryString`, `pageTitle` and
+ * `?utm_campaign=`.
+ *
+ * Escaping correctly (backslash first, then pipe) would also work, but it keeps
+ * the value's ability to forge structure one ordering mistake away. Removing
+ * the delimiter from the value means no escape sequence is involved at all,
+ * which is the property worth having on a channel a model reads: there is
+ * nothing left to get wrong. The cost is that a literal `|` in a value reads as
+ * a fullwidth one, which is visible, honest, and cannot shift a number.
+ *
+ * Newlines go too, for the reason flattenNewlines exists: a bare newline starts
+ * a line that reads as a fresh `| ... |` row.
+ */
+export declare function tableCell(value: string): string;
 /** The caveats that change how a number should be read. */
 export declare function caveatsFor(metadata: ResponseMetaData | undefined, hasCurrencyMetric: boolean): string[];
 /**

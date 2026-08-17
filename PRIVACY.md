@@ -89,8 +89,9 @@ The other three commands do not render reports and do not go through `format.ts`
 so their output is not redacted. `fields` returns GA4 field names and Google's own
 descriptions of them; `properties` and `doctor` return the property ids, property
 names and account names the credential can reach, plus one active-user count. All
-three escape `|` and collapse newlines in their table cells, as report rows do, but
-nothing in any of them is matched against the patterns below.
+three take `|` out of their table cells and collapse newlines, using the same
+`tableCell` function report rows go through, but nothing in any of them is matched
+against the patterns below.
 
 | Masked | Recognised as | Replaced with |
 | --- | --- | --- |

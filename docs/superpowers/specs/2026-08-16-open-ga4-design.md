@@ -51,8 +51,12 @@ dependency, and the `openclaw/plugin-sdk` import in `src/types.ts`.
 the plugin registration API, so the host-level marker for externally controlled
 content goes away. What actually protects a reader today does not: report rows
 are still rendered inside a fenced block introduced as visitor-supplied data,
-with `|` escaped and newlines collapsed in every cell, and that lives in
-`src/ga4/format.ts`. The newest released host, 2026.7.1-2, does not read
+with `|` removed from every cell (replaced with a fullwidth vertical line that
+cannot delimit) and newlines collapsed, and that lives in `src/ga4/format.ts`.
+That cell treatment was an escape when this was written; escaping turned out to
+be the wrong tool, because escaping `|` as `\|` makes a value's existing `\|`
+into a live delimiter. The decision recorded here is unaffected: what protects a
+reader is still the framing plus a cell that cannot forge structure. The newest released host, 2026.7.1-2, does not read
 `resultContentSource` at all, so present-day behaviour is unchanged. What is
 given up is a label that would have taken effect on a future host upgrade. This
 is recorded here so it is a decision rather than an oversight.

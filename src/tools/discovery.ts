@@ -1,5 +1,6 @@
 import type { FieldMetadata } from "../ga4/client.js";
 import { diagnose, type Ga4Error } from "../ga4/errors.js";
+import { tableCell } from "../ga4/format.js";
 import { RENAMED_FIELDS } from "../ga4/limits.js";
 import { classifyDimension } from "../privacy/policy.js";
 import { redactText } from "../privacy/redact.js";
@@ -13,10 +14,24 @@ import type { Ga4Runtime } from "../runtime.js";
  * a custom dimension added last week shows up without a skill update.
  */
 
-/** Table cells must not be able to forge table structure. */
-function cell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
-}
+/**
+ * Table cells must not be able to forge table structure.
+ *
+ * The same function report rows use, imported rather than reimplemented. There
+ * were two copies of this and both had the same defect: escaping `|` as `\|`
+ * turns a value's existing `\|` into `\\|`, which markdown reads as an escaped
+ * backslash followed by a live delimiter, so the escape created the very split
+ * it was meant to prevent. One copy also means these tables cannot drift from
+ * the report tables again, and it is worth more here than there: the tables
+ * below are not inside a fenced block and carry no untrusted-data framing, so a
+ * forged column is all the harder to notice.
+ *
+ * Field names and descriptions come from Google's own metadata rather than from
+ * a site visitor, which lowers the odds but not the requirement: a custom
+ * dimension's name and description are typed by whoever administers the
+ * property, and this is the one place they are rendered as structure.
+ */
+const cell = tableCell;
 
 /**
  * A failed check, with redactText applied once, here, at the point the text is
