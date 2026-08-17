@@ -28,7 +28,7 @@ touches the network.
 | Host | Why | What is sent |
 | --- | --- | --- |
 | `oauth2.googleapis.com` | Exchange a credential for a one-hour access token | Service account: an RS256-signed JWT assertion carrying the service-account email, the single scope, the audience, and issue/expiry times. gcloud user credential: `client_id`, `client_secret`, `refresh_token`. |
-| `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata`, `checkCompatibility` | Bearer token, numeric property id, dimension and metric names, date ranges, any filters and sort you asked for, a row limit. |
+| `analyticsdata.googleapis.com` | `runReport`, `runRealtimeReport`, `metadata` | Bearer token, numeric property id, dimension and metric names, date ranges, any filters and sort you asked for, a row limit. |
 | `analyticsadmin.googleapis.com` | `accountSummaries`, the property list `properties` and `doctor` print | Bearer token, a page size, and, when the account list runs past one page, the continuation token Google itself returned. Nothing else. |
 
 Never sent, to any host: your conversation, your prompts, the model's output, your
@@ -61,9 +61,9 @@ then do with the request.
 one. Google enforces this server-side regardless of what the client asks for.
 
 **Reach a write method, because none exists.** `src/ga4/client.ts` is the complete
-Google surface used: `runReport`, `runRealtimeReport`, `getMetadata`,
-`checkCompatibility`, `listAccountSummaries`. Adding a sixth is a visible diff in
-one hand-written file; there is no generated SDK where an update could quietly
+Google surface used, four read methods: `runReport`, `runRealtimeReport`,
+`getMetadata`, `listAccountSummaries`. Adding one more is a visible diff in one
+hand-written file; there is no generated SDK where an update could quietly
 introduce `deleteProperty`.
 
 **Call the audience-export or access-report endpoints.** The skill never calls

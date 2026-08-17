@@ -116,6 +116,84 @@ describe("documented identifiers", () => {
   });
 });
 
+/**
+ * Every method `src/ga4/client.ts` returns, read from the source rather than
+ * listed here. The client is one hand-written object literal, so its methods
+ * are the only ones indented four spaces and declared `async`; `guardedFetch`
+ * and `call` are module-level functions and do not match.
+ */
+function clientMethods(): string[] {
+  const source = readFileSync(path.join(repoRoot, "src/ga4/client.ts"), "utf8");
+  return [...source.matchAll(/^ {4}async (\w+)\(/gm)].map((match) => match[1]!);
+}
+
+const COUNT_WORDS: readonly string[] = ["zero", "one", "two", "three", "four", "five", "six", "seven"];
+
+describe("the documented Google API surface", () => {
+  /**
+   * "The complete Google surface is N read methods: ..." is the load-bearing
+   * sentence of this project's security argument, and it is made in two
+   * documents. It went stale the moment a method was added or removed:
+   * `checkCompatibility` was implemented, never called, and counted in both
+   * lists, so a reader auditing the surface would have gone looking for a
+   * caller that did not exist.
+   *
+   * Pinning the rendered list, built from the source, is what makes the next
+   * change to the client impossible to land without updating the prose.
+   */
+  it("lists exactly the methods the client implements, in both documents", () => {
+    const methods = clientMethods();
+    expect(methods.length, "no methods were found in src/ga4/client.ts").toBeGreaterThan(0);
+    const rendered = methods.map((name) => `\`${name}\``).join(", ");
+
+    for (const file of ["PRIVACY.md", "SECURITY.md"]) {
+      const text = readFileSync(path.join(repoRoot, file), "utf8").replace(/\s+/g, " ");
+      expect(text, `${file} should name the complete surface as ${rendered}`).toContain(rendered);
+      expect(text, `${file} should say there are ${COUNT_WORDS[methods.length]} read methods`)
+        .toContain(`${COUNT_WORDS[methods.length]} read methods`);
+    }
+  });
+
+  it("names no method the client does not have, in the documents that claim completeness", () => {
+    // The other direction, so a method deleted from the client cannot survive
+    // in a sentence somewhere other than the two lists above.
+    //
+    // Scoped to the two documents that assert what the surface *is*.
+    // docs/DESIGN.md is deliberately excluded: it is a design record, and its
+    // convention is to say in place what was decided and then reversed, which
+    // means naming a retired identifier in the past tense on purpose.
+    const implemented = new Set(clientMethods());
+    // Method-shaped rather than a fixed list, so a name nobody has invented
+    // yet is caught as well as the ones that exist today.
+    const methodShaped = /`(\w*(?:Report|Metadata|Compatibility|Summaries|Property|Properties))`/g;
+    /**
+     * The three method-shaped names in these documents that are deliberately
+     * not client methods, each named for a reason the sentence around it
+     * depends on:
+     *
+     * - `accountSummaries` is the Admin API resource the host table names.
+     * - `deleteProperty` is the write method that does not exist, named as the
+     *   thing a generated SDK could quietly introduce and this one cannot.
+     * - `runAccessReport` is one of the three per-visitor endpoints the skill
+     *   never calls, named so the claim can be checked.
+     */
+    const NOT_CLIENT_METHODS = new Set(["accountSummaries", "deleteProperty", "runAccessReport"]);
+    const offenders: string[] = [];
+    for (const file of ["PRIVACY.md", "SECURITY.md"]) {
+      const text = readFileSync(path.join(repoRoot, file), "utf8");
+      for (const match of text.matchAll(methodShaped)) {
+        const name = match[1]!;
+        // Lower-case first letter: a method name, not a type (RunReportRequest)
+        // or a URL path segment (`metadata`, matched by neither).
+        if (/^[a-z]/.test(name) && !implemented.has(name) && !NOT_CLIENT_METHODS.has(name)) {
+          offenders.push(`${file}: ${name}`);
+        }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([]);
+  });
+});
+
 describe("the privacy documentation", () => {
   it("lists every host the plugin may contact", async () => {
     const privacy = await readFile(path.join(repoRoot, "PRIVACY.md"), "utf8");
