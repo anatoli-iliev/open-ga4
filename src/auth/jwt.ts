@@ -1,7 +1,7 @@
 import { createSign } from "node:crypto";
 
 /**
- * The only OAuth scope this plugin ever requests.
+ * The only OAuth scope this skill ever requests.
  *
  * `analytics.readonly` cannot write, cannot administer, and cannot read any
  * Google product other than Analytics. Keeping it a single exported constant

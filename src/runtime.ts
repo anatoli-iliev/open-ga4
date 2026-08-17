@@ -10,8 +10,8 @@ import type { ResolvedConfig } from "./config.js";
 /**
  * Lazily assembled per-process state.
  *
- * Nothing here runs at plugin load. Credentials are read the first time a tool
- * actually needs them, so installing the plugin does not touch a key file, and
+ * Nothing here runs at startup. Credentials are read the first time a command
+ * actually needs them, so installing the skill does not touch a key file, and
  * an OpenClaw instance that never asks an analytics question never opens one.
  */
 

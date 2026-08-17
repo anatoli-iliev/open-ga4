@@ -109,7 +109,7 @@ describe("assertPropertyAllowed", () => {
         ...DEFAULT_ACCESS_POLICY,
         propertyAllowlist: ["123456789"],
       }),
-    ).toThrow(/555000111 is not in this plugin's allowlist \(123456789\)/);
+    ).toThrow(/555000111 is not in this skill's allowlist \(123456789\)/);
   });
 });
 

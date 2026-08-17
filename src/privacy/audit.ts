@@ -5,10 +5,10 @@ import { appendFile } from "node:fs/promises";
  *
  * Off unless `privacy.auditLogPath` is set. When on, it records what was
  * *asked*, never what came back. A log that contained report rows would be
- * exactly the personal data this plugin works to keep off disk, so response
+ * exactly the personal data this skill works to keep off disk, so response
  * bodies, row values and totals never reach it.
  *
- * This is the only module in the plugin that writes to a file, which is what
+ * This is the only module in the skill that writes to a file, which is what
  * makes the "nothing is written to disk" claim checkable: `surface.test.ts`
  * asserts no other shipped module calls a write API.
  */

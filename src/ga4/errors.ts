@@ -89,7 +89,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
 
   const now = context.now ?? Date.now;
   const { info, help, status } = detailsOf(error.body);
-  const principal = context.principal ?? "this plugin's Google credential";
+  const principal = context.principal ?? "this skill's Google credential";
 
   if (error.serverDate) {
     const skewMs = error.serverDate.getTime() - now();
@@ -162,7 +162,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       "CREDENTIALS_REJECTED",
       "Google rejected the credential.",
       "Tokens are refreshed automatically, so this usually means the service-account key was " +
-        "revoked or deleted in Google Cloud. Generate a new key and point the plugin at it.",
+        "revoked or deleted in Google Cloud. Generate a new key and put it in GA4_CREDENTIALS.",
     );
   }
 
@@ -192,7 +192,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       `Google Analytics returned a server error (HTTP ${error.status}). This is on Google's side, ` +
         `not a problem with the query.`,
       "Try again shortly. Repeated server errors also consume a separate hourly allowance, so this " +
-        "plugin stops retrying after a few attempts rather than locking the property out.",
+        "skill stops retrying after a few attempts rather than locking the property out.",
       true,
     );
   }

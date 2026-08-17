@@ -1,7 +1,7 @@
 import { redactText } from "../privacy/redact.js";
 
 /**
- * The complete set of hosts this plugin is permitted to contact.
+ * The complete set of hosts this skill is permitted to contact.
  *
  * Every outbound request goes through {@link guardedFetch}, which rejects any
  * URL whose host is not on this list. That turns "we only talk to Google" from
@@ -17,7 +17,7 @@ export const ALLOWED_HOSTS: readonly string[] = [
 export class EgressBlockedError extends Error {
   constructor(readonly host: string) {
     super(
-      `Blocked a request to ${host}. This plugin may only contact ${ALLOWED_HOSTS.join(", ")}.`,
+      `Blocked a request to ${host}. This skill may only contact ${ALLOWED_HOSTS.join(", ")}.`,
     );
     this.name = "EgressBlockedError";
   }

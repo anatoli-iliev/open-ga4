@@ -84,8 +84,8 @@ export type DimensionClass = "user-identifying" | "free-text" | "ordinary";
 /**
  * @param userScopedCustom Dimension names the property reports as user-scoped
  *   custom definitions. Supplying these from a live `getMetadata` response
- *   means custom dimensions added to a property *after* this plugin shipped are
- *   still classified correctly, with no plugin update.
+ *   means custom dimensions added to a property *after* this skill shipped are
+ *   still classified correctly, with no skill update.
  */
 export function classifyDimension(
   name: string,
@@ -145,7 +145,7 @@ export function assertDimensionsAllowed(
   }
   throw new PolicyError(
     `${blocked.join(", ")} ${blocked.length === 1 ? "identifies" : "identify"} individual people, ` +
-      `so this plugin does not request ${blocked.length === 1 ? "it" : "them"} by default. ` +
+      `so this skill does not request ${blocked.length === 1 ? "it" : "them"} by default. ` +
       `To allow ${blocked.length === 1 ? "it" : "them"}, set the environment variable ` +
       `GA4_ALLOW_USER_DIMENSIONS to true. ` +
       `For counts of people, use the totalUsers or activeUsers metric instead; ` +
@@ -159,7 +159,7 @@ export function assertPropertyAllowed(propertyId: string, policy: AccessPolicy):
   }
   if (!policy.propertyAllowlist.includes(propertyId)) {
     throw new PolicyError(
-      `Property ${propertyId} is not in this plugin's allowlist ` +
+      `Property ${propertyId} is not in this skill's allowlist ` +
         `(${policy.propertyAllowlist.join(", ")}). Add it to the comma-separated ` +
         `GA4_PROPERTY_ALLOWLIST environment variable to query it.`,
     );

@@ -35,7 +35,7 @@ slice of the problem and impose real setup cost:
 
 ## Non-goals
 
-- Writing to Google Analytics. The plugin is read-only by construction.
+- Writing to Google Analytics. It is read-only by construction.
 - Replacing the GA4 UI. Deep, exploratory analysis stays in the console.
 - Supporting Universal Analytics (shut down; the API is gone).
 
@@ -83,7 +83,7 @@ Rejected: `@google-analytics/data` (gRPC stack and generated protos),
 `googleapis` (very large), `google-auth-library` (pulls `gaxios`, `gcp-metadata`,
 and an HTTP stack we would then have to constrain).
 
-Consequence: the plugin implements OAuth service-account JWT assertion itself
+Consequence: it implements OAuth service-account JWT assertion itself
 with `node:crypto` (`createSign("RSA-SHA256")`) and calls the GA4 REST API with
 the host's configured `fetch`. This is roughly 150 lines and it makes the egress
 claim below verifiable by reading one file.

@@ -162,7 +162,7 @@ describe("the report command", () => {
       GA4_PROPERTY_ALLOWLIST: "555000111",
     });
     await expect(runReport(runtime, { report: "top_pages" })).rejects.toThrow(
-      /not in this plugin's allowlist/,
+      /not in this skill's allowlist/,
     );
     expect(calls).toHaveLength(0);
   });
