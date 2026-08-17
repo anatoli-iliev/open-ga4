@@ -102,20 +102,46 @@ describe("the ClawHub tag for a prerelease", () => {
    * `--tags latest`, which would have aliased a beta as the default
    * `openclaw skills install @anatoli-iliev/open-ga4` gets.
    *
-   * This pins the fix at the one line that computes the tag, rather than
-   * scanning the whole file for the words "tags" and "latest": the file's
-   * own comments explain this exact failure mode in prose next to the fix,
-   * using those same words, and a looser scan would have matched its own
-   * explanation instead of the code.
+   * Pinned as the exact expected expression text, not a regex that only
+   * captures the two string literals either side of `&&`/`||`: a looser
+   * match here has a real, worse-than-the-original-bug failure mode. A GitHub
+   * Actions `${{ ... }}` expression is not something this suite can evaluate
+   * (there is no interpreter for it available here), so a mutation like
+   * `!github.event.release.prerelease && 'prerelease' || 'latest'` inverts
+   * the behaviour (every real release tagged `prerelease`, every beta tagged
+   * `latest`) while keeping both literals and their order exactly as before,
+   * and a regex anchored only on the literals cannot see the inserted `!`.
+   * Matching the whole line is acceptable here because it is short and
+   * changes rarely, and a test that fails whenever this exact condition is
+   * touched is doing its job on a path where a silent regression reaches a
+   * public registry.
    */
-  it("computes the tag from github.event.release.prerelease, and only the non-prerelease branch is latest", () => {
+  const EXPECTED_TAG_LINE = "CLAWHUB_TAGS: ${{ github.event.release.prerelease && 'prerelease' || 'latest' }}";
+
+  it("computes the tag from an unnegated github.event.release.prerelease, with the non-prerelease branch pinned to latest", () => {
     const tagLine = workflow.split("\n").find((line) => line.includes("CLAWHUB_TAGS:"));
     expect(tagLine, "no CLAWHUB_TAGS assignment found in release.yml").toBeDefined();
-    const match = /github\.event\.release\.prerelease\s*&&\s*'([^']+)'\s*\|\|\s*'([^']+)'/.exec(tagLine!);
-    expect(match, "CLAWHUB_TAGS is not computed from github.event.release.prerelease").not.toBeNull();
-    const [, prereleaseTag, defaultTag] = match!;
-    expect(defaultTag, "a real release must still be tagged latest").toBe("latest");
-    expect(prereleaseTag, "a prerelease must never be tagged latest").not.toBe("latest");
+    expect(tagLine!.trim(), "CLAWHUB_TAGS is not computed by the exact expected expression").toBe(
+      EXPECTED_TAG_LINE,
+    );
+  });
+
+  /**
+   * Computing the right value is only half the fix: nothing above ties
+   * `CLAWHUB_TAGS` to the invocation that is supposed to consume it.
+   * Reverting only `--tags "$CLAWHUB_TAGS"` back to `--tags latest`, while
+   * leaving the now-unused `CLAWHUB_TAGS:` env line sitting above it, is a
+   * plausible "simplification" edit that the previous test alone would not
+   * catch, since it only ever reads the env line, never the invocation.
+   */
+  it("passes the computed tag to skill publish", () => {
+    // The invocation spans several lines, each ending in a shell line
+    // continuation (`\`), so `--tags` lands on a different source line than
+    // `npx clawhub`; the whole step's script is checked as one string rather
+    // than one split line, the same reason `stepRunScript` exists below.
+    const script = stepRunScript(workflow, "Publish to ClawHub");
+    expect(script).toContain("npx clawhub");
+    expect(script).toContain('--tags "$CLAWHUB_TAGS"');
   });
 });
 
