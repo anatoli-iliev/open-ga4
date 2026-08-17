@@ -1,207 +1,240 @@
-# open-ga4
+# Open GA4
 
-Read-only Google Analytics 4 reporting for an OpenClaw agent, running on your own machine.
+**Ask your OpenClaw agent how your website is doing, and get a straight answer.**
 
-**Open GA4** is an OpenClaw skill: seven commands an agent can run to answer questions about
-a GA4 property. What the top pages were last month, where traffic came from, what changed
-since last year, who is on the site right now. It calls Google's REST API directly: no
-gateway, no vendor account, no Python. It is for people who run OpenClaw locally, and who
-would rather read a skill's whole network surface than trust a description of it. That
-surface is zero runtime dependencies, three allowed hosts, and one OAuth scope.
+You: *"What were my top pages last month?"*
 
-## What it does
+Your agent runs one command and comes back with this:
 
-| Command | What it returns |
-| --- | --- |
-| `report` | One preset report (top pages, traffic sources, channels, countries, devices, events, ecommerce and more) as a markdown table. |
-| `compare` | Two consecutive periods side by side, with the change between them. |
-| `live` | Active users in the last 30 minutes, from Google's realtime endpoint. |
-| `fields` | Searches the property's live dimension and metric catalog and returns exact API names. |
-| `query` | Full control: your own dimensions, metrics, filter and sort order. |
-| `properties` | Lists every property this credential can read, with its numeric id. |
-| `doctor` | Runs the setup checks in dependency order and names the first failure and its fix. With `--json`, reports the single next thing to do. |
+```markdown
+| pagePath | screenPageViews | activeUsers | userEngagementDuration |
+| --- | --- | --- | --- |
+| / | 1,842 | 612 | 2h 32m |
+| /pricing | 938 | 401 | 1h 27m |
+| /blog/how-we-cut-latency | 705 | 388 | 3h 28m |
+| /docs/getting-started | 402 | 297 | 2h 13m |
+| /contact | 233 | 180 | 24m 0s |
+```
 
-Things you can ask in plain English:
+No dashboard to open, no report builder, no remembering that "pageviews" is spelled
+`screenPageViews` and that "conversions" is called `keyEvents` now.
 
-- "What were my top pages last month?"
-- "How did the last 28 days compare with the 28 days before that?"
-- "Which channels drove the most key events this year?"
-- "Is anyone on the site right now?"
-
-Presets carry dimension and metric names that are known to work together, so the model
-names an intent instead of guessing that "pageviews" is spelled `screenPageViews` and that
-"conversions" is now `keyEvents`. When no preset fits, `query` takes the fields directly.
+It reads your Google Analytics 4 data and nothing else. It cannot change anything, and it
+never sends your data anywhere except back to you.
 
 ## Install
 
 ```bash
-openclaw skills install @anatoli-iliev/open-ga4      # from ClawHub
-openclaw skills install git:anatoli-iliev/open-ga4   # straight from GitHub
-openclaw skills install /path/to/open-ga4            # from a local clone
+openclaw skills install @anatoli-iliev/open-ga4
 ```
 
-Nothing has been released yet, so the ClawHub line becomes true at the first tagged
-release; the git and local-clone routes work today.
+That is the whole install. No build step, nothing to compile, no `npm install`. You need
+Node 22.22.3 or newer, which OpenClaw already runs on.
 
-No install route runs a build, so the compiled JavaScript is committed in `lib/` beside the
-source, one readable file per source module. Committing build output is normally bad
-practice, and the price of it is a CI job that rebuilds from `src/` on every push and
-fails if the committed output differs by a byte, so the two cannot drift. Node 22.22.3 or
-newer is the only requirement, and OpenClaw already needs it.
-
-Then set one environment variable, and usually a second:
+Not released to ClawHub yet, so until the first tagged release use one of these instead:
 
 ```bash
-GA4_CREDENTIALS   # your service-account JSON key: its contents, or a path to the file
-GA4_PROPERTY_ID   # the 9 or 10 digit property id, so you do not have to say which site
+openclaw skills install git:anatoli-iliev/open-ga4
+openclaw skills install /path/to/open-ga4
 ```
 
-`GA4_CREDENTIALS` accepts either form. Pasting the key's contents is one step instead of
-three, and it is what the "Save key" field in the Control UI writes; the honest cost is that
-it puts a private key inside `~/.openclaw/openclaw.json`, and OpenClaw writes a `.bak` beside
-that file on every change, so the key comes to rest in two places rather than one. Saving the
-file somewhere private, `chmod 600`, and setting `GA4_CREDENTIALS` to its **path** keeps it in
-one. Both are supported; pick knowing that.
+## Set it up by asking
 
-Then just ask. "What were my top pages last month?" is enough; the agent picks the command.
+Google's side takes about ten minutes and has one step that almost everybody gets wrong.
+So let the agent walk you through it:
 
-To check the setup yourself, ask the agent to run the diagnostic, or run it by hand.
-`openclaw skills info open-ga4` prints the installed path:
+> **"Set up my analytics."**
+
+It checks what is missing and gives you one thing to do at a time, with the link to click
+and the exact text to paste. Do that step, say you are done, and it checks again. Under the
+hood it is reading this:
+
+```json
+{
+  "ok": false,
+  "blocked_on": "no_credentials",
+  "next": {
+    "where": "your environment",
+    "action": "Set GA4_CREDENTIALS to your service-account key's contents, or a path to it, then run doctor again."
+  }
+}
+```
+
+One step, never a wall of errors. When it says `"ok": true`, you are done.
+
+Prefer to do it yourself? [SETUP.md](SETUP.md) has the click-by-click version with console
+links. The short form is: create a Google Cloud project, enable the Analytics Data API,
+create a service account, download its JSON key, **then grant that service account's email
+address Viewer access inside Google Analytics** (Admin, then Property access management).
+
+You can also run the diagnostic yourself, without going through the agent. Ask OpenClaw
+where the skill landed, then run it:
 
 ```bash
 openclaw skills info open-ga4
 node <skill-dir>/lib/cli.js doctor
 ```
 
-Do not hardcode `<skill-dir>`: a `--global` install lands somewhere else.
+Do not hardcode `<skill-dir>`: a `--global` install puts it somewhere else. Every command
+below works the same way if you would rather drive it by hand than ask for it.
 
-## Setup
+That last step is the one people miss, because it happens in Analytics and not in Google
+Cloud, and skipping it produces a 403 that explains nothing. Ask the agent to run the
+diagnostic and it will translate it for you.
 
-Five steps here, eight in the click-by-click version, about ten minutes.
-[SETUP.md](SETUP.md) has it with console links, and the agent can walk you through it
-instead: say "set up my analytics" and it runs `doctor --json` and hands you one step at a
-time.
+## Two settings
 
-1. **Create a Google Cloud project** and enable the Google Analytics Data API. Enable the
-   Admin API too if you want `properties` to list your sites by name; reports work
-   without it.
-2. **Create a service account.** Skip the "grant this service account access to project"
-   step; a Cloud IAM role does nothing for GA4 access.
-3. **Download a JSON key.** That file is a password. Either paste its contents into
-   `GA4_CREDENTIALS`, or move it somewhere private, `chmod 600` it, and put the path there.
-4. **Grant the service account read access in Google Analytics.** This is the step
-   everyone gets wrong. Copy the `client_email` from the key file (it looks like
-   `something@project.iam.gserviceaccount.com`), then open Google Analytics, go to
-   **Admin > Property access management**, click **+ > Add users**, paste that address,
-   untick "Notify new users by email", and give it **Viewer** and nothing else. Access is
-   granted here, inside Analytics, not in Google Cloud. Skipping this produces a 403 that
-   says nothing useful; `doctor` translates it.
-5. **Set the property id**, then run `doctor`. The property id is the 9 or 10 digit number
-   under **Admin > Property details**, not the `G-XXXXXXXXXX` measurement ID from your
-   site's tag. Paste the measurement ID and the skill will tell you which number you
-   actually need.
+```bash
+GA4_CREDENTIALS   # your service-account JSON key: paste the contents, or give a file path
+GA4_PROPERTY_ID   # your property's 9 or 10 digit number, so you never have to say which site
+```
 
-## Why this one
+`GA4_CREDENTIALS` takes either form. Pasting the contents is one step instead of three, and
+it is what the "Save key" box in the OpenClaw Control UI writes.
 
-- **Zero runtime dependencies.** Not one npm package: every import is either relative or
-  a `node:` builtin, and a test fails the build on anything else. OAuth is a signed JWT
-  built with `node:crypto`; the API is called with `fetch`. No gRPC stack, no generated
-  protos, no `google-auth-library`, no Python. You can read the whole client in one sitting,
-  and there is no `node_modules` that can be missing, stale, or compromised.
-- **An egress allowlist enforced in code.** Every request goes through one guard that
+The honest trade: pasting puts a private key inside `~/.openclaw/openclaw.json`, and OpenClaw
+writes a `.bak` beside that file whenever it changes, so the key ends up in two places
+rather than one. Saving the file somewhere private, `chmod 600`, and giving the **path**
+keeps it in one. Both work. Pick knowing that.
+
+`GA4_PROPERTY_ID` is the number under **Admin > Property details**, not the
+`G-XXXXXXXXXX` from your website's tag. Paste that by mistake and the skill will tell you
+which number it actually needs.
+
+## What you can ask
+
+| You say | You get |
+| --- | --- |
+| "How did my site do last month?" | Users, sessions, engagement, key events, revenue |
+| "What were my top pages?" | Most-viewed pages, ranked |
+| "Where is my traffic coming from?" | Sources, mediums, channels |
+| "Are we up or down on last month?" | Two periods side by side, with the change |
+| "Is anyone on my site right now?" | Active users in roughly the last 30 minutes |
+| "Which countries? What devices?" | Countries, devices, browsers |
+| "How many people signed up?" | Key events and conversions |
+| "Is my analytics set up correctly?" | A per-step check naming the first thing that is wrong |
+
+Ask in whatever words come naturally. The agent picks the command; you do not need to know
+there are seven of them (`report`, `compare`, `live`, `query`, `fields`, `properties` and
+`doctor`), or that `report` has eighteen ready-made reports behind it.
+
+When nothing pre-built fits, `query` takes your own dimensions, metrics, filter and sort
+order directly.
+
+## What it will not do
+
+- **It cannot change anything.** The only permission it asks Google for is read-only.
+- **It will not tell you about individual people.** `userId` and person-scoped custom
+  dimensions are refused unless you deliberately turn them on, and that applies to
+  filtering and sorting by them too, not just to asking for them as a column.
+- **It masks personal data before your agent sees it.** Email addresses, phone numbers,
+  card numbers, tokens and unexpected query-string values in your reports are replaced, and
+  the report tells you how many values were masked.
+- **It writes nothing to disk.** No cache of your reports, no saved access token, no
+  telemetry, no update check.
+
+## Built to be checked
+
+The reason to trust this is not that the README says nice things. It is that the claims are
+small enough to verify and there are tests that fail when one stops being true.
+
+- **Zero runtime dependencies.** Every import is either a relative path or a `node:`
+  builtin, and a test fails the build on anything else. The OAuth signature is built with
+  `node:crypto`; the API is called with `fetch`. No gRPC stack, no generated protos, no
+  Python. There is no `node_modules` to be missing, stale, or compromised, and you can read
+  the whole client in one sitting.
+- **An egress allowlist enforced in code.** It can only talk to three hosts. One guard
   rejects any host other than `oauth2.googleapis.com`, `analyticsdata.googleapis.com` and
-  `analyticsadmin.googleapis.com`, before the request is made, and redirects are an error
-  rather than something to follow, so a 302 cannot reach a host that was never checked. A
-  test scans the built bundle for `https://` URLs and fails on any host that is neither one
-  of those three nor on a short reviewed list of addresses that only ever appear as text:
-  `console.cloud.google.com` and `console.developers.google.com`, which are the "enable the
-  API here" link printed in an error message, `www.googleapis.com`, which appears inside
-  the OAuth scope identifier, and `analytics.google.com`, which is the Property access
-  management link printed for a missing grant. Your credentials go to Google and to no
-  third-party service. The allowlist constrains which host the skill asks for, not what
-  your system does with the request: if OpenClaw or your machine is configured with an
-  HTTP proxy or a TLS-intercepting middlebox, this traffic traverses it exactly as all
-  other OpenClaw traffic does.
-- **Read-only by scope.** The only scope requested is
+  `analyticsadmin.googleapis.com`
+  before a request is made, and treats a redirect as an error rather than following it, so a
+  302 cannot reach a host that was never checked. A test scans the shipped code for `https://`
+  URLs and fails on any host that is neither one of those three nor on a short reviewed list
+  that only ever appears as text: `console.cloud.google.com` and
+  `console.developers.google.com` (the "enable the API here" link in an error message),
+  `www.googleapis.com` (inside the OAuth scope string), and `analytics.google.com` (the
+  Property access management link shown when a grant is missing).
+- **Read-only by scope.** Not by promise. The only scope requested is
   `https://www.googleapis.com/auth/analytics.readonly`, and a test asserts no other
-  `googleapis.com/auth/` string exists in the shipped bundle.
-- **No telemetry, and no report data on disk.** No phone-home, no update check, no usage
-  counter. Tokens are held in memory only; a cached Google access token in a file is a
-  credential at rest that you did not agree to.
-- **Errors that name the fix.** A missing property grant becomes "add this address in
-  Admin > Property access management with the Viewer role". A disabled API becomes the
-  console link that enables it. A machine whose clock has drifted becomes "turn on network
-  time sync" instead of `invalid_grant`. Diagnosis reads Google's machine-readable status
-  and reason fields, never its error prose.
+  `googleapis.com/auth/` string exists in what ships.
+- **What ships is what you can read.** The compiled JavaScript is committed in `lib/`, one
+  readable file per source file, because no install route runs a build. Committing build
+  output is normally bad practice; the price paid for it here is a CI job that rebuilds from
+  `src/` and fails if the committed output differs by a byte, so the two cannot drift apart.
+- **Errors name the fix.** A missing grant becomes "add this address in Admin > Property
+  access management with the Viewer role". A disabled API becomes the console link that
+  enables it. A drifted clock becomes "turn on network time sync" rather than
+  `invalid_grant`. Diagnosis reads Google's machine-readable status and reason fields, never
+  its prose.
 - **Reports say what they do not mean.** Sampling, Google's minimum-aggregation
-  thresholding, `(other)`-row rollups, restricted metrics and the property's own time zone
-  each produce one plain sentence, and only when the flag is actually set.
+  thresholding, `(other)` rollups, restricted metrics and the property's own time zone each
+  produce one plain sentence, and only when that flag is actually set.
 
-Verified comparisons, each backed by a fetched artifact:
+Your credentials go to Google and to no third party. Note that the allowlist governs which
+host this skill asks for, not what your machine then does with the request: if you run an
+HTTP proxy or a TLS-intercepting middlebox, this traffic traverses it exactly as the rest of
+your OpenClaw traffic does.
 
-| Project | Verified fact | Here instead |
-| --- | --- | --- |
-| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request; a filtered question returns whole-site numbers with no error. It also defaults `save=true`, writing results to disk. | A parameter this skill cannot honour raises an error naming why, rather than being dropped: asking `overview` for a filter says that report has no dimension to filter on. Ranked presets carry an explicit sort; single-row summaries do not, because sorting one row means nothing. Nothing writes report data to disk. |
-| [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | `skills/ga4/SKILL.md` declares `requires: {"bins": ["python3"]}` and every example runs `python3 scripts/ga4_query.py`. Those scripts tell you to `pip install google-analytics-data google-auth-oauthlib` on the host. | Both are skills, so the comparison is what each one makes you install first. This one declares `requires: {"bins": ["node"]}`, and Node is what OpenClaw already runs on. No Python, no `pip`, no virtualenv, and zero npm dependencies either: the whole thing is Node built-ins, so there is no install step left that can fail. |
+## Your visitors write some of this data
 
-## Analytics data is untrusted input
+This is the part most analytics integrations miss, and it is worth understanding before you
+wire an agent to act on the numbers.
 
 GA4 dimension values are not written by you. They are written by whoever visited your site.
-Anyone can open `yoursite.com/?<any text they like>` and that text lands in `pagePath` and
-`pagePathPlusQueryString` in tomorrow's report. The same goes for `pageTitle`,
-`pageReferrer`, `landingPage`, `sessionCampaignName` and every other visitor-derived or
-marketer-written field. Referrer spam has been doing this to Google Analytics for a decade
-for SEO reasons. An agent that reads those values turns it into a prompt-injection channel.
+Anyone can open `yoursite.com/?<any text they like>` and that text appears in `pagePath` in
+tomorrow's report. The same goes for `pageTitle`, `pageReferrer`, `landingPage`,
+`sessionCampaignName` and every other visitor-derived or marketer-written field. Referrer
+spam has been doing exactly this to Google Analytics for over a decade. An agent that reads
+those values turns them into a prompt-injection channel.
 
-What separates visitor-authored text from trusted output here is the framing of the output
-itself. Report rows are rendered inside a fenced block introduced as data supplied by site
-visitors, rather than interpolated into prose. In every table cell of every command, a `|`
-is **replaced** with a fullwidth one that cannot delimit, and newlines are collapsed, so a
-value cannot forge table structure or start a line of its own. Replacement rather than
-escaping, because escaping `|` as `\|` turns a value's existing `\|` into `\\|`, which
-markdown reads as an escaped backslash followed by a live delimiter: the escape creates the
-split it exists to prevent. Taking the character out leaves no escape sequence to get
-wrong. `fields`, `properties` and `doctor` list field, property and account names in a
-plain table without that fence, because those names come from Google and from your own
-Analytics configuration rather than from visitors.
+What separates visitor-authored text from trusted output here is how the output is framed.
+Report rows go inside a fenced block introduced as data supplied by site visitors, never
+interpolated into a sentence. In every cell of every command a `|` is **replaced** with a
+fullwidth one that cannot delimit, and newlines are collapsed, so a value cannot forge table
+structure or start a line of its own.
 
-An earlier version of this project was an OpenClaw plugin and marked every tool result with
-`resultContentSource: "network"`, the host's marker for externally controlled content. That
-field is only reachable through the plugin registration API, so it went away with the
-plugin. It cost nothing in practice: the newest released host, 2026.7.1-2, does not read the
-field at all. What is given up is a label that would have taken effect on a future host
-upgrade, and `SKILL.md` tells the agent the same thing in prose instead.
+Replacement rather than escaping, for a reason worth recording: escaping `|` as `\|` turns a
+value's existing `\|` into `\\|`, which markdown reads as an escaped backslash followed by a
+live delimiter. The escape creates the very split it exists to prevent, and a visitor could
+use it to shift a column and make a fabricated number look measured. Removing the character
+leaves no escape sequence to get wrong.
+
+`fields`, `properties` and `doctor` print field, property and account names in a plain table
+without that fence, because those names come from Google and from your own Analytics
+configuration rather than from visitors.
 
 This reduces risk. It does not eliminate prompt injection, and nothing does. If you wire an
-agent to act on GA4 data (send email, file tickets, change bids), keep a human in that
-loop. The numbers are trustworthy. The strings are not.
+agent to act on GA4 data (send email, file tickets, change bids), keep a human in that loop.
+**The numbers are trustworthy. The strings are not.**
 
 ## Privacy
 
-Full detail in [PRIVACY.md](PRIVACY.md). The short version:
+Full detail in [PRIVACY.md](PRIVACY.md). The parts worth knowing up front:
 
-- Every dimension value in a report passes through redaction before the model sees it,
-  unless you set `GA4_REDACT` to a false value: emails, phone numbers, UUIDs, JWTs, card
-  numbers confirmed by Luhn, long opaque tokens, and the values of query parameters outside
-  a keep-list. The report says how many values were masked.
-- `userId` and user-scoped custom dimensions are refused unless you explicitly opt in with
-  `GA4_ALLOW_USER_DIMENSIONS`.
+- Redaction is on by default and covers emails, phone numbers, UUIDs, JWTs, card numbers
+  confirmed by Luhn, long opaque tokens, and the values of query parameters outside a
+  keep-list.
 - The four settings that weaken a privacy default (`GA4_REDACT`,
-  `GA4_ALLOW_USER_DIMENSIONS`, `GA4_PROPERTY_ALLOWLIST`, `GA4_AUDIT_LOG`) are environment
-  variables and deliberately have no command-line flag, because a flag can be set by the
-  model and a page title is attacker-controlled text that reaches the model. Passing one as
-  a flag is refused with an error saying so.
+  `GA4_ALLOW_USER_DIMENSIONS`, `GA4_PROPERTY_ALLOWLIST` and `GA4_AUDIT_LOG`) are environment
+  variables and deliberately have **no** command-line flag. A flag can be set by the model,
+  and a page title is attacker-controlled text that reaches the model. Passing one as a flag
+  is refused with an error explaining why.
 - The skill never calls `properties.audienceExports`, `properties.audienceLists` or the
-  Admin API's `runAccessReport`, the three surfaces built to hand back rows keyed to an
-  individual visitor, and a test asserts those strings are absent from the built bundle.
-  That is narrower than "cannot read per-user data": `runReport` returns per-person rows as
-  soon as the `userId` dimension is used, which is why that dimension is blocked by default.
-- **What this does not protect you from:** report data returned to the agent is seen by
-  whatever model provider you have configured. This skill controls what it asks Google for
-  and what it hands to the agent. Redaction runs here, on a response that has already left
-  Google and arrived on your machine in full, so it changes what the model sees and not what
-  Google holds. It has no say in what your own LLM provider does with a report once the
-  agent reads it. Choose the property, the date range and the provider accordingly.
+  Admin API's `runAccessReport`, the three surfaces built to return rows keyed to an
+  individual visitor, and a test asserts those strings are absent from what ships.
+- **What this does not protect you from:** the reports your agent reads are seen by whatever
+  model provider you have configured. This skill controls what it asks Google for and what
+  it hands to your agent. Redaction runs here, on a response that has already arrived on
+  your machine in full, so it changes what the model sees, not what Google holds. Choose the
+  property, the date range and the provider accordingly.
+
+## How it compares
+
+Both rows are backed by a fetched copy of the other project's code.
+
+| Project | What it does | Here instead |
+| --- | --- | --- |
+| [`adamkristopher/ga4-api-toolkit`](https://github.com/adamkristopher/ga4-api-toolkit) | `src/api/reports.ts` `runReport()` accepts `filters` and `orderBy`, then never uses them when building the request, so a filtered question quietly returns whole-site numbers. It also defaults `save=true`, writing results to disk. | A parameter this skill cannot honour raises an error naming why, rather than being dropped: asking `overview` for a filter says that report has no dimension to filter on. Nothing writes report data to disk. |
+| [`jdrhyne/agent-skills`](https://github.com/jdrhyne/agent-skills) GA4 skill | `skills/ga4/SKILL.md` declares `requires: {"bins": ["python3"]}` and every example runs `python3 scripts/ga4_query.py`. Those scripts tell you to `pip install google-analytics-data google-auth-oauthlib` on the host. | Both are skills, so the comparison is what each one makes you install first. This one requires `node`, which OpenClaw already runs on. No Python, no `pip`, no virtualenv, and zero npm dependencies either, so there is no install step left that can fail. |
 
 ## Development
 
@@ -209,26 +242,26 @@ Full detail in [PRIVACY.md](PRIVACY.md). The short version:
 npm install           # devDependencies only: typescript and vitest
 npm run check         # typecheck, then tests, then build
 npm test              # vitest, no network, no credentials
-npm run typecheck
 ```
 
 `npm test` builds first, because `src/privacy/surface.test.ts` asserts the privacy
-guarantees against `lib/` (the bundle that actually ships) rather than against the
-source. `src/docs.test.ts` and `src/docs/skill.test.ts` check the prose in this file,
-`SKILL.md` and the rest: every command quoted in either file must parse, every `blocked_on`
-value the code can emit must appear in `SKILL.md`'s setup tree, every environment variable
-the frontmatter declares must be one the code reads and the other way round, and every
-preset id, npm script and Google host named anywhere in the documentation must exist.
+guarantees against `lib/`, the code that actually ships, rather than against the source.
+
+`src/docs.test.ts` and `src/docs/skill.test.ts` check the prose in this file and in
+`SKILL.md`: every command quoted must parse, every setup state the code can report must
+appear in `SKILL.md`'s tree, every environment variable the frontmatter declares must be one
+the code reads and the other way round, and every preset id, npm script and Google host
+named anywhere in the documentation must exist. Documentation drifts silently, and a careful
+reader is not a control.
 
 If you run the OpenClaw CLI against this repo, use `scripts/openclaw-sandbox.sh`. Several
-CLI subcommands boot enough of the runtime to run config doctor and state migrations;
-against a real installation that can rewrite your config and relocate your state files.
-Setting `OPENCLAW_STATE_DIR` alone is not enough, because migrations still probe the legacy
-paths under `$HOME`. The wrapper redirects `HOME`, the XDG config/state/data directories and
-the OpenClaw config and state directories into a throwaway `.sandbox/`, so nothing can touch
-your own OpenClaw setup.
+subcommands boot enough of the runtime to run config doctor and state migrations, which
+against a real installation can rewrite your config and relocate your state files. Setting
+`OPENCLAW_STATE_DIR` alone is not enough, because migrations still probe the legacy paths
+under `$HOME`. The wrapper redirects `HOME`, the XDG directories and the OpenClaw config and
+state directories into a throwaway `.sandbox/`.
 
-The design decisions, and what was rejected, are in [docs/DESIGN.md](docs/DESIGN.md) for the
+Design decisions, and what was rejected, are in [docs/DESIGN.md](docs/DESIGN.md) for the
 analytics core and
 [docs/superpowers/specs/2026-08-16-open-ga4-design.md](docs/superpowers/specs/2026-08-16-open-ga4-design.md)
 for the skill packaging.
