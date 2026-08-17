@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+# Nothing here needs write access to the repository. Publishing needs an
+# external credential (CLAWHUB_TOKEN, a secret this workflow reads, not a
+# GitHub permission) and reading the release body needs GH_TOKEN, which the
+# built-in GITHUB_TOKEN covers at this same read-only scope. This matches
+# ci.yml's permissions block; no step here needs anything broader.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to ClawHub
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Actions are pinned by full commit SHA, the same two pins ci.yml uses,
+      # so Dependabot updates both files together. A tag can be moved; a SHA
+      # cannot.
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A missing CLAWHUB_TOKEN is expected until the secret is deliberately
+      # configured: this workflow file ships with the repository, but
+      # publishing to ClawHub does not follow from that. Checking here, before
+      # Node is even set up, means a release published without the secret
+      # configured costs almost no CI time and fails with a message naming
+      # exactly what is missing, rather than failing deep inside `clawhub
+      # skill publish` with a credential error that never says which secret
+      # to add.
+      - name: Require CLAWHUB_TOKEN
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAWHUB_TOKEN:-}" ]; then
+            echo "::error::CLAWHUB_TOKEN secret is not set. Add it under repository Settings > Secrets and variables > Actions, then re-run this workflow. Nothing has been published."
+            exit 1
+          fi
+
+      # A GitHub release's tag is any string a maintainer typed; only a
+      # leading `v` is stripped before it becomes the published version.
+      # Whether `clawhub` rejects something malformed is server-side and not
+      # something this repository can test or assume, so this fails first,
+      # naming the exact bad tag, rather than letting a typo reach the
+      # registry and be discovered from a listing. Semver's own prerelease
+      # and build-metadata suffixes are both allowed (`1.2.3-beta.1+build.5`
+      # is valid), because a real prerelease version string is not the same
+      # thing as the `prerelease` flag checked in the next step: a tag can be
+      # plain `v1.2.3` and still be marked "this is a pre-release" in the
+      # GitHub UI.
+      - name: Validate the release version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if ! [[ "$version" =~ $semver ]]; then
+            echo "::error::'$GITHUB_REF_NAME' is not a valid version once the leading v is stripped ('$version'). Refusing to publish a malformed version to the registry."
+            exit 1
+          fi
+          echo "Version '$version' is valid semver."
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same step, same ordering constraint, and the same reason as ci.yml's
+      # identically named step: this has to run against the untouched
+      # checkout, before Typecheck or Test's `pretest` gets a chance to
+      # rebuild lib/ from src/. After either of those, `npm run check:lib`
+      # would be comparing a fresh build in a temporary directory to a fresh
+      # build already sitting in the working tree, from the same source,
+      # which always matches regardless of whether the *committed* lib/, the
+      # thing this job is about to publish, ever agreed with src/ at all.
+      # Publishing a bundle whose committed output does not match its source
+      # would put a lie on the registry, so this runs first, unconditionally,
+      # before anything later in this job gets a chance to rebuild lib/. Do
+      # not reorder this step to after Typecheck or Test.
+      - name: Assert lib/ matches a fresh build of src/
+        run: |
+          set -euo pipefail
+          npm run check:lib
+          if [ -n "$(git status --porcelain lib/)" ]; then
+            echo "::error::lib/ is not a clean build of src/. Refusing to publish a bundle that does not match its source."
+            git --no-pager diff --stat lib/
+            exit 1
+          fi
+          echo "lib/ matches src/"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # "$GITHUB_WORKSPACE", never ".". clawhub resolves a relative folder
+      # argument against its own working directory, which silently falls back
+      # to the OpenClaw workspace directory when the current directory has no
+      # .clawhub/ marker. `publish .` would therefore upload the wrong
+      # directory and then report "SKILL.md required" about a directory
+      # nobody named. This is a documented, verified trap, not a style
+      # preference: do not simplify the argument to ".".
+      #
+      # --source-repo, --source-ref and --source-commit tie the listing to the
+      # exact commit that produced it, so a reader can diff what is published
+      # against what is on GitHub. For anything that asks a user for a
+      # credential, that is worth doing.
+      #
+      # `gh release view` needs GH_TOKEN in this step's own environment; it is
+      # not inherited from anywhere else. The built-in GITHUB_TOKEN, granted
+      # read-only access per the permissions block above, is enough to read a
+      # release body.
+      #
+      # GitHub fires `release: published` for prereleases too: `prereleased`
+      # is a separate event type that exists alongside `published`, not
+      # instead of it, so marking a release "pre-release" in the GitHub UI
+      # does not stop this workflow from running. Hardcoding `--tags latest`
+      # here would alias a beta as the default `openclaw skills install
+      # @anatoli-iliev/open-ga4` gets. `clawhub skill publish --help`
+      # documents `--tags` as "Comma-separated tags (default: "latest")",
+      # an arbitrary string, not a fixed set, so a prerelease is tagged
+      # `prerelease` instead of being skipped: it still reaches the registry,
+      # installable by that tag, just never as the default.
+      - name: Publish to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAWHUB_TAGS: ${{ github.event.release.prerelease && 'prerelease' || 'latest' }}
+        run: |
+          set -euo pipefail
+          npx clawhub@0.23.3 skill publish "$GITHUB_WORKSPACE" \
+            --slug open-ga4 --name "Open GA4" \
+            --version "${GITHUB_REF_NAME#v}" --tags "$CLAWHUB_TAGS" \
+            --source-repo "$GITHUB_REPOSITORY" \
+            --source-ref "$GITHUB_REF_NAME" \
+            --source-commit "$GITHUB_SHA" \
+            --changelog "$(gh release view "$GITHUB_REF_NAME" --json body -q .body)"

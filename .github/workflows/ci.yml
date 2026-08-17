@@ -93,8 +93,10 @@ jobs:
 
 # There is deliberately no publish job here. A publish workflow that can fire on
 # a push is a foot-gun: one bad merge and a broken listing is on ClawHub forever.
-# Releasing, when it lands, runs from its own workflow, gated on
-# `on: release: types: [published]`, and runs `clawhub skill publish` with the
-# source repository, ref and commit passed explicitly, so the listing records
-# which commit produced it. Nothing here fires on a push, and no such workflow
-# exists yet.
+# Releasing runs from its own workflow, `.github/workflows/release.yml`, gated
+# on `on: release: types: [published]` and nothing else, and it runs
+# `clawhub skill publish` with the source repository, ref and commit passed
+# explicitly, so the listing records which commit produced it. That workflow
+# stays inert until the CLAWHUB_TOKEN secret is deliberately configured.
+# Nothing in this file fires on a push, and nothing in this file publishes
+# anything.
