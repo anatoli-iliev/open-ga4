@@ -439,4 +439,35 @@ describe("SKILL.md guidance", () => {
     expect(() => parseArgs(["query", "--metrics", "activeUsers", "--filter", "country:exact:US"]))
       .not.toThrow();
   });
+
+  /**
+   * The grammar is found by locating the operator, not by counting colons,
+   * which is why both a filter's value (a URL) and its field (a custom
+   * dimension) may contain a colon of their own. An earlier version of this
+   * section (and of the parser) assumed only the value could: it described
+   * splitting "on the first two colons only", which made every GA4 custom
+   * dimension (`customUser:<name>`, `customEvent:<name>`, `customItem:<name>`)
+   * unfilterable, because `customEvent:plan_tier:exact:pro` split into field
+   * `customEvent`, operator `plan_tier`, an unknown operator. This pins the
+   * corrected description against regressing to that phrasing, and against
+   * the worked example silently going stale.
+   */
+  it("documents that a filter field, not only its value, may itself contain a colon", () => {
+    const filters = section(SKILL, "### `--filter` means two different things");
+    expect(filters).not.toMatch(/first two colons/i);
+    expect(filters).toContain("customEvent:plan_tier:exact:pro");
+    expect(filters).toContain("customEvent:plan_tier");
+    expect(filters).toMatch(/colon in its name/i);
+    expect(() =>
+      parseArgs([
+        "query",
+        "--metrics",
+        "activeUsers",
+        "--dimensions",
+        "eventName",
+        "--filter",
+        "customEvent:plan_tier:exact:pro",
+      ]),
+    ).not.toThrow();
+  });
 });

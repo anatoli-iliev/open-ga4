@@ -604,6 +604,152 @@ describe("query's --filter grammar: field:operator:value", () => {
     expect(code).toBe(EXIT.BAD_INPUT);
     expect(c.err.join("")).toContain("field:operator:value");
   });
+
+  it("exits 2 on an empty value", async () => {
+    const c = capture();
+    const code = await main(["query", "--metrics", "activeUsers", "--filter", "country:exact:"], {}, c.streams);
+    expect(code).toBe(EXIT.BAD_INPUT);
+    expect(c.err.join("")).toContain("field:operator:value");
+  });
+});
+
+/**
+ * GA4 field names can contain a colon themselves: every custom dimension does
+ * (`customUser:<name>`, `customEvent:<name>`, `customItem:<name>`). The
+ * grammar is parsed by locating the operator (a name from FILTER_OPERATORS),
+ * not by counting colons, so the field keeps its own colon rather than being
+ * truncated at the first one.
+ */
+describe("query's --filter grammar: a field name may itself contain a colon", () => {
+  it("keeps a customEvent dimension's own colon as part of the field", async () => {
+    // customEvent:<name> is ordinary, non-sensitive: this is the "no GA4 custom
+    // dimension can be filtered at all" defect. Inspecting the built request
+    // (not just the exit code) proves the field split at `customEvent:plan_tier`
+    // rather than at `customEvent`.
+    const { runtime, calls } = fakeRuntime();
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "customEvent:plan_tier:exact:pro", property: "123456789" },
+    };
+    await dispatch(runtime, parsed);
+    expect(calls[0]!.request.dimensionFilter).toEqual({
+      filter: {
+        fieldName: "customEvent:plan_tier",
+        stringFilter: { matchType: "EXACT", value: "pro", caseSensitive: false },
+      },
+    });
+  });
+
+  it("keeps a customItem dimension's own colon as part of the field", async () => {
+    const { runtime, calls } = fakeRuntime();
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "customItem:sku_note:contains:clearance", property: "123456789" },
+    };
+    await dispatch(runtime, parsed);
+    expect(calls[0]!.request.dimensionFilter).toEqual({
+      filter: {
+        fieldName: "customItem:sku_note",
+        stringFilter: { matchType: "CONTAINS", value: "clearance", caseSensitive: false },
+      },
+    });
+  });
+
+  it("resolves an operator-shaped field segment to the rightmost valid split", async () => {
+    // customEvent:exact:exact:pro could split at either "exact". The chosen
+    // rule (see filterFlag's doc comment in main.ts) is the rightmost split
+    // that still leaves a non-empty field and a non-empty value, because the
+    // field is a fixed GA4 identifier and the value is arbitrary caller text,
+    // so the reading that keeps more of the leading text in the field is the
+    // one more often meant. This pins that choice so it is deliberate rather
+    // than incidental.
+    const { runtime, calls } = fakeRuntime();
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "customEvent:exact:exact:pro", property: "123456789" },
+    };
+    await dispatch(runtime, parsed);
+    expect(calls[0]!.request.dimensionFilter).toEqual({
+      filter: {
+        fieldName: "customEvent:exact",
+        stringFilter: { matchType: "EXACT", value: "pro", caseSensitive: false },
+      },
+    });
+  });
+});
+
+/**
+ * The privacy policy's `customUser:` prefix rule (src/privacy/policy.ts) used
+ * to be unreachable through the CLI: the old first-two-colons grammar split
+ * `customUser:crm_id:exact:x` into field `customUser`, operator `crm_id`,
+ * which is not a known operator, so it was rejected as a syntax error before
+ * buildFilters (and the policy check inside it) ever ran. These prove the
+ * branch is genuinely live now: the refusal carries the policy's own wording,
+ * and lifting the opt-in changes the outcome, rather than the request being
+ * blocked somewhere else regardless of the setting.
+ */
+describe("the customUser: privacy check is reachable through --filter", () => {
+  it("refuses with the privacy policy's wording, not a syntax error", async () => {
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "customUser:crm_id:exact:x", property: "123456789" },
+    };
+    const { code, err } = await dispatchExitCode(parsed);
+    expect(code).toBe(EXIT.BAD_INPUT);
+    expect(err).toContain("customUser:crm_id");
+    expect(err).toContain("identifies individual people");
+    expect(err).toContain("Filtering on customUser:crm_id asks for the rows belonging to particular people");
+    expect(err).toContain("GA4_ALLOW_USER_DIMENSIONS");
+    // Not the grammar error: proves the field parsed correctly (as
+    // `customUser:crm_id`, not truncated to `customUser`) and reached the
+    // policy rather than being rejected as malformed input.
+    expect(err).not.toContain("field:operator:value");
+  });
+
+  it("permits the same filter once GA4_ALLOW_USER_DIMENSIONS is set", async () => {
+    // Proves the path is genuinely live, not blocked somewhere else
+    // regardless of the setting: the same input, the opt-in flips on, and the
+    // outcome flips with it.
+    const { runtime } = fakeRuntime(undefined, { GA4_ALLOW_USER_DIMENSIONS: "true" });
+    const parsed: CommandArgs = {
+      kind: "command",
+      command: "query",
+      positional: [],
+      flags: { metrics: "activeUsers", filter: "customUser:crm_id:exact:x", property: "123456789" },
+    };
+    const { code, err } = await dispatchExitCode(parsed, runtime);
+    expect(code).toBe(EXIT.OK);
+    expect(err).toBe("");
+  });
+});
+
+/**
+ * --sort has no field:operator:value grammar of its own: it is a single flag
+ * value, `str(flags, "sort")` read straight through with no colon-splitting
+ * step anywhere in main.ts. So a custom dimension's own colon was never at
+ * risk here the way it was in --filter; this pins that down rather than
+ * leaving it as an unverified claim in the report.
+ */
+it("--sort passes a custom dimension's own colon through unsplit", async () => {
+  const { runtime, calls } = fakeRuntime();
+  const parsed: CommandArgs = {
+    kind: "command",
+    command: "query",
+    positional: [],
+    flags: { metrics: "activeUsers", sort: "customEvent:plan_tier", property: "123456789" },
+  };
+  await dispatch(runtime, parsed);
+  expect(calls[0]!.request.orderBys).toEqual([
+    { desc: true, dimension: { dimensionName: "customEvent:plan_tier" } },
+  ]);
 });
 
 describe("VERSION", () => {

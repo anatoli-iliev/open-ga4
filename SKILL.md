@@ -456,17 +456,26 @@ you gave against the equal-length period immediately before it.
 This is the easiest thing in the whole skill to get wrong, so both forms are spelled
 out.
 
-**`query --filter field:operator:value`** is a real condition, split on the first two
-colons only, so the value may contain colons of its own (a full URL, for instance):
+**`query --filter field:operator:value`** is a real condition. The split is found by
+locating the operator, not by counting colons, so both sides of it may contain colons
+of their own: the value may be a full URL, and the field may be a custom dimension,
+which always has a colon in its name (`customUser:<name>`, `customEvent:<name>`,
+`customItem:<name>`):
 
 ```
 query --metrics activeUsers --dimensions country --filter country:exact:US
 query --metrics screenPageViews --dimensions pagePath --filter pagePath:begins_with:/blog
+query --metrics activeUsers --dimensions eventName --filter customEvent:plan_tier:exact:pro
 ```
+
+The last example's field is `customEvent:plan_tier`, not `customEvent`: the operator
+(`exact`) is found by name, so the colon inside the custom dimension's own name stays
+part of the field.
 
 Operators: `contains`, `exact`, `begins_with`, `ends_with`, `regex`, `in_list`,
 `greater_than`, `less_than`. A metric field accepts only `greater_than` and
-`less_than`. An unknown operator is rejected before anything is sent.
+`less_than`. An unknown operator is rejected before anything is sent, as are an
+empty field, an empty value, and an expression with no operator in it at all.
 
 The field is checked against the same privacy policy as `--dimensions`, so
 `--filter userId:exact:...`, `--filter customUser:<anything>:...` and `--sort userId`
