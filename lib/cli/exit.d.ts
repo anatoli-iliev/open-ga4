@@ -6,15 +6,13 @@ export declare const EXIT: {
     readonly GOOGLE_REFUSED: 4;
 };
 /**
- * Exit 4 means Google refused, and only codes that came from Google get it.
+ * Exit 4 is reserved for an answer that came back from Google.
  *
- * "UNEXPECTED" is diagnose()'s catch-all for a failure it could not name, so
- * it is the one Ga4Error code that is not a statement about Google's answer.
- * It used to land on exit 4 anyway, which meant exit 1 was documented in
- * SKILL.md and unreachable in code (every error is converted to a Ga4Error
- * before it gets here, so the `instanceof` fallback below never fires in
- * practice), while a genuinely internal failure was reported to the user as a
- * refusal from Google. Now the two are separate: 1 is "something broke and
- * nobody can say what", 4 is "Google said no, and here is its reason".
+ * INVALID_REQUEST is the one code raised on both sides of the network: this
+ * skill's own pre-flight checks use it, and so does Google's HTTP 400 ("that
+ * query is invalid"). Both are exit 2, because the response to both is the
+ * same and it is not the response exit 4 asks for: the query has to change,
+ * and guessing again is the wrong move. SKILL.md's table says so rather than
+ * claiming exit 2 is always local.
  */
 export declare function exitCodeFor(error: unknown): number;

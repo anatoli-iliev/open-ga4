@@ -44,6 +44,15 @@ describe("exitCodeFor", () => {
     expect(exitCodeFor(ga4Error("GOOGLE_SERVER_ERROR"))).toBe(EXIT.GOOGLE_REFUSED);
   });
 
+  it("maps a blocked egress attempt to exit 1: it is a defect, not an answer", () => {
+    // The egress guard refuses before a socket is opened, and every URL this
+    // skill builds comes from constants in its own source, so reaching it
+    // means the skill tried to contact somewhere it may not. Exit 4 would
+    // blame Google for a request it never received; exit 2 would ask the user
+    // to correct a value they never supplied.
+    expect(exitCodeFor(ga4Error("EGRESS_BLOCKED"))).toBe(EXIT.UNEXPECTED);
+  });
+
   it("maps UNEXPECTED to exit 1, not to exit 4", () => {
     // diagnose()'s catch-all for a failure it could not name is the one code
     // that is not a statement about Google's answer, so it must not claim
