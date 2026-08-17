@@ -51,9 +51,13 @@ take, so the packaging changed and the analytics core did not.
 - Egress allowlist of three `googleapis.com` hosts, enforced before any request
   is issued. Covered by tests for lookalike domains, userinfo smuggling and
   non-default ports.
-- Unconditional redaction of dimension values: emails (including
-  percent-encoded), UUIDs, JWTs, long opaque tokens, Luhn-valid card numbers,
-  E.164 phone numbers, and the values of query parameters outside a keep list.
+- Redaction of dimension values, on by default and turned off only by setting
+  `GA4_REDACT`: emails (including percent-encoded), UUIDs, JWTs, long opaque
+  tokens, Luhn-valid card numbers, E.164 phone numbers, and the values of query
+  parameters outside a keep list. With it off, every report says so in its
+  caveats and `doctor --json` says so in `warnings`.
+- Unconditional stripping of credentials from every error message and warning
+  the skill prints, which no setting can turn off.
 - Person-identifying dimensions (`userId`, `signedInWithUserId`,
   `customUser:*`, and any user-scoped custom definition the property reports)
   are refused unless explicitly enabled.

@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { COMMANDS, KNOWN_FLAGS, parseArgs } from "../cli/args.js";
 import { EXIT } from "../cli/exit.js";
+import { parseDateRange } from "../ga4/dates.js";
 import { BLOCKED_ON_VALUES } from "../setup/state.js";
 import { environmentVariablesRead, repoRoot } from "../testing/files.test-support.js";
 
@@ -338,6 +339,50 @@ describe("SKILL.md environment variables", () => {
       expect(declared, `${name} should be declared in the frontmatter`).toContain(name);
     }
     expect(privacy).toMatch(/no command-line flag/i);
+  });
+});
+
+describe("SKILL.md date ranges", () => {
+  /**
+   * Which ranges run up to today is a fact both SKILL.md and README.md have
+   * described, and README.md got it wrong: it called `live` "the only command
+   * that sees today" while four ranges end on today and any command taking
+   * `--range` can use them. Pinned against the parser rather than re-read by a
+   * human, so the sentence cannot outlive the behaviour.
+   */
+  const RANGES = [
+    "today",
+    "yesterday",
+    "last 7 days",
+    "last 28 days",
+    "last 30 days",
+    "last 90 days",
+    "this week",
+    "last week",
+    "this month",
+    "last month",
+    "this year",
+    "last year",
+  ];
+
+  it("documents every range the parser accepts", () => {
+    const section_ = section(SKILL, "### Date ranges");
+    for (const range of RANGES) {
+      expect(section_, `the date-range section should name ${range}`).toContain(`\`${range}\``);
+    }
+  });
+
+  it("names the ranges that run up to today, and only those", () => {
+    const today = new Date("2026-08-12T09:30:00Z");
+    const endingToday = RANGES.filter((range) => parseDateRange(range, today).endDate === "today");
+    expect(endingToday).toEqual(["today", "this week", "this month", "this year"]);
+
+    const section_ = section(SKILL, "### Date ranges");
+    for (const range of endingToday) {
+      expect(section_, `${range} runs up to today and the section should say so`)
+        .toMatch(new RegExp(`\`${range}\``));
+    }
+    expect(section_).toMatch(/run up to today|so far/);
   });
 });
 

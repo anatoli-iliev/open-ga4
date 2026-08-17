@@ -626,6 +626,72 @@ describe("the committed build output claim", () => {
   });
 });
 
+describe("CONTRIBUTING.md's claim-to-enforcement table", () => {
+  /**
+   * The table maps each published privacy claim to the function that enforces
+   * it. A wrong entry is worse than a missing one: it sends a contributor to
+   * weaken the wrong function while believing they are looking at the right
+   * one. It credited dimension-value redaction to `redactText`, which is the
+   * unconditional credential stripper for errors and logs; the function that
+   * redacts dimension values is `redactValue`.
+   *
+   * So every identifier named in the "Where it is enforced" column has to
+   * appear in one of the files that row names.
+   */
+  it("names an enforcement point that exists in one of the files the row cites", () => {
+    const contributing = readFileSync(path.join(repoRoot, "CONTRIBUTING.md"), "utf8");
+    const offenders: string[] = [];
+    let rowsChecked = 0;
+
+    for (const line of contributing.split("\n")) {
+      if (!line.startsWith("| ") || line.startsWith("| ---")) continue;
+      const cells = line.split("|").map((cell) => cell.trim());
+      const [, , enforced, asserted] = cells;
+      if (enforced === undefined || asserted === undefined) continue;
+
+      const files = [...`${enforced} ${asserted}`.matchAll(/`((?:src|lib|scripts)\/[\w./-]+\.(?:ts|js|mjs))`/g)]
+        .map((match) => match[1]!)
+        .filter((file) => existsSync(path.join(repoRoot, file)));
+      const identifiers = [...enforced.matchAll(/`([A-Za-z_][A-Za-z0-9_]*)`/g)].map((match) => match[1]!);
+      if (identifiers.length === 0) continue;
+
+      rowsChecked += 1;
+      const sources = files.map((file) => readFileSync(path.join(repoRoot, file), "utf8")).join("\n");
+      for (const identifier of identifiers) {
+        if (!sources.includes(identifier)) {
+          offenders.push(`${identifier} is not in ${files.join(", ") || "any file this row names"}`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+    // A parser that silently matched nothing would pass this test forever.
+    expect(rowsChecked, "no claim rows with an enforcement identifier were found").toBeGreaterThan(2);
+  });
+});
+
+describe("the documented Node version floor", () => {
+  it("matches package.json's engines.node wherever a document states one", () => {
+    // CONTRIBUTING.md said "Node 22 or newer" while package.json required
+    // 22.22.3: close enough to look right and wrong enough to send somebody to
+    // a version that does not run this.
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+      engines: { node: string };
+    };
+    const floor = /(\d+\.\d+\.\d+)/.exec(pkg.engines.node)?.[1];
+    expect(floor, "package.json's engines.node has no x.y.z floor").toBeDefined();
+
+    const stated: string[] = [];
+    for (const { file, text } of readShippedDocs()) {
+      for (const match of text.matchAll(/\bNode (\d+(?:\.\d+\.\d+)?)/g)) {
+        stated.push(`${file}: Node ${match[1]}`);
+        expect(match[1], `${file} states a Node version that is not the floor`).toBe(floor);
+      }
+    }
+    expect(stated.length, "no document states the Node version at all").toBeGreaterThan(0);
+  });
+});
+
 describe(".github/CODEOWNERS", () => {
   /**
    * CODEOWNERS is a list of paths, and a path that no longer exists protects
