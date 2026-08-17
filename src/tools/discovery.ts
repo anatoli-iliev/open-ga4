@@ -2,7 +2,7 @@ import type { FieldMetadata } from "../ga4/client.js";
 import { diagnose, type Ga4Error } from "../ga4/errors.js";
 import { tableCell } from "../ga4/format.js";
 import { RENAMED_FIELDS } from "../ga4/limits.js";
-import { classifyDimension } from "../privacy/policy.js";
+import { classifyDimension, userIdentifyingDimensionNames } from "../privacy/policy.js";
 import { redactText } from "../privacy/redact.js";
 import type { Ga4Runtime } from "../runtime.js";
 
@@ -105,6 +105,15 @@ export async function runFields(
     .sort((a, b) => b.score - a.score || (a.field.apiName ?? "").localeCompare(b.field.apiName ?? ""))
     .slice(0, limit);
 
+  // The same property-specific names the report commands classify against, from
+  // metadata that is already in hand, so no extra request. Without this the
+  // "blocked by default" flag below would be computed from the static rules
+  // alone while `query` refuses on the static rules *plus* these, and `fields`
+  // would describe a field as available that `query` then refuses. A discovery
+  // command that disagrees with the command it exists to help you write is worse
+  // than one that says nothing.
+  const propertyIdentifying = userIdentifyingDimensionNames(metadata.dimensions ?? []);
+
   const rename = RENAMED_FIELDS[params.query.trim()];
 
   const lines = [
@@ -130,7 +139,10 @@ export async function runFields(
         if (entry.field.customDefinition) {
           flags.push("custom");
         }
-        if (entry.kind === "dimension" && classifyDimension(api) === "user-identifying") {
+        if (
+          entry.kind === "dimension" &&
+          classifyDimension(api, propertyIdentifying) === "user-identifying"
+        ) {
           flags.push("blocked by default");
         }
         const kindCell = flags.length > 0 ? `${entry.kind} (${flags.join(", ")})` : entry.kind;

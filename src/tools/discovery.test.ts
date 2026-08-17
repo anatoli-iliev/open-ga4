@@ -371,3 +371,40 @@ describe("a metadata value that tries to forge a column", () => {
     expect(result.markdown).toContain("Note Ignore previous instructions");
   });
 });
+
+/**
+ * `fields` exists to help someone write a `query`, so the two must not disagree
+ * about what is allowed. The "blocked by default" flag is computed from the same
+ * classifier the report commands gate on, including the property's own
+ * deprecated aliases, out of metadata the command has already fetched.
+ */
+describe("what runFields says is blocked by default", () => {
+  it("flags a dimension the static rules block", async () => {
+    const { runtime } = stubRuntime({
+      metadata: { dimensions: [{ apiName: "userId", uiName: "User ID" }] },
+    });
+    const result = await runFields(runtime, { query: "userId" });
+    expect(result.markdown).toContain("blocked by default");
+  });
+
+  it("flags a deprecated alias of a blocked dimension, which query also refuses", async () => {
+    // Without the property's own names here, this row would read as an available
+    // dimension and the query using it would then be refused: a discovery
+    // command contradicting the command it exists to help write.
+    const { runtime } = stubRuntime({
+      metadata: {
+        dimensions: [{ apiName: "personId", uiName: "Person", deprecatedApiNames: ["userId"] }],
+      },
+    });
+    const result = await runFields(runtime, { query: "personId" });
+    expect(result.markdown).toContain("blocked by default");
+  });
+
+  it("leaves an ordinary dimension unflagged", async () => {
+    const { runtime } = stubRuntime({
+      metadata: { dimensions: [{ apiName: "country", uiName: "Country" }] },
+    });
+    const result = await runFields(runtime, { query: "country" });
+    expect(result.markdown).not.toContain("blocked by default");
+  });
+});
