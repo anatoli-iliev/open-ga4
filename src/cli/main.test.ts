@@ -27,9 +27,12 @@ type Recorded = { propertyId: string; request: RunReportRequest };
  * every request built, so a test can inspect exactly what was sent rather than
  * only whether something threw.
  */
-function fakeRuntime(responseOverride?: RunReportResponse): { runtime: Ga4Runtime; calls: Recorded[] } {
+function fakeRuntime(
+  responseOverride?: RunReportResponse,
+  envOverrides: Parameters<typeof configFromEnv>[0] = {},
+): { runtime: Ga4Runtime; calls: Recorded[] } {
   const calls: Recorded[] = [];
-  const config = configFromEnv({ GA4_PROPERTY_ID: "123456789" });
+  const config = configFromEnv({ GA4_PROPERTY_ID: "123456789", ...envOverrides });
   const response: RunReportResponse = responseOverride ?? {
     dimensionHeaders: [{ name: "pagePath" }],
     metricHeaders: [{ name: "activeUsers", type: "TYPE_INTEGER" }],
@@ -260,6 +263,31 @@ describe("--json", () => {
     const state = JSON.parse(result) as { blocked_on: string; properties?: Array<{ id: string; name: string }> };
     expect(state.blocked_on).toBe("no_property_selected");
     expect(state.properties).toEqual([]);
+  });
+
+  it("doctor --json reports redaction being off, rather than a clean ok", async () => {
+    // End to end through the command an agent actually runs: runDiagnose
+    // builds the privacy check, setupStateFrom turns it into a warning, and
+    // dispatch serialises it. The markdown checklist has always said this; the
+    // JSON, which is the channel the agent reads, used to say ok: true and
+    // nothing else.
+    const { runtime } = fakeRuntime(undefined, { GA4_REDACT: "0" });
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: true } };
+    const state = JSON.parse(await dispatch(runtime, parsed)) as {
+      ok: boolean;
+      blocked_on: string;
+      warnings?: string[];
+    };
+    expect(state.blocked_on).toBe("ok");
+    expect(state.warnings?.join(" ")).toMatch(/redaction is turned OFF/);
+    expect(state.warnings?.join(" ")).toContain("GA4_REDACT");
+  });
+
+  it("doctor --json says nothing about redaction when it is on", async () => {
+    const { runtime } = fakeRuntime();
+    const parsed: CommandArgs = { kind: "command", command: "doctor", positional: [], flags: { json: true } };
+    const state = JSON.parse(await dispatch(runtime, parsed)) as { warnings?: string[] };
+    expect(state.warnings).toBeUndefined();
   });
 
   it("doctor without --json still returns the markdown checklist", async () => {
