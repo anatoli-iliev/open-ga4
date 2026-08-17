@@ -5,11 +5,11 @@ import { classifyDimension } from "../privacy/policy.js";
 import type { Ga4Runtime } from "../runtime.js";
 
 /**
- * The tools that answer "what can I even ask for": `ga4_fields` and
- * `ga4_diagnose`.
+ * The operations that answer "what can I even ask for": the `fields`,
+ * `properties` and `doctor` commands.
  *
- * Both read from the property itself rather than from a shipped list, so a
- * custom dimension added last week shows up without a plugin update.
+ * All three read from the property itself rather than from a shipped list, so
+ * a custom dimension added last week shows up without a skill update.
  */
 
 /** Table cells must not be able to forge table structure. */
@@ -154,7 +154,7 @@ export type PropertiesParams = Record<string, never>;
 
 /**
  * The GA4 properties a credential can read. Setup needs this before any
- * report is possible, and ga4_diagnose lists the same properties as one of
+ * report is possible, and doctor lists the same properties as one of
  * its checks, so both call this rather than each parsing account summaries
  * on their own.
  */

@@ -24,7 +24,7 @@ describe("resolveProperty", () => {
         GA4_PROPERTY_ALLOWLIST: "555000111",
       }),
     });
-    expect(() => restricted.resolveProperty()).toThrow(/not in this plugin's allowlist/);
+    expect(() => restricted.resolveProperty()).toThrow(/not in this skill's allowlist/);
     expect(restricted.resolveProperty("555000111")).toBe("555000111");
   });
 
@@ -39,7 +39,7 @@ describe("resolveProperty", () => {
       }
     })();
     expect(error?.message).toMatch(/No GA4 property specified/);
-    expect(error?.fix).toMatch(/ga4_diagnose/);
+    expect(error?.fix).toMatch(/Run properties/);
     expect(error?.fix).toMatch(/GA4_PROPERTY_ID/);
   });
 });

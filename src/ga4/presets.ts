@@ -9,7 +9,7 @@ import type { FilterExpression, OrderBy } from "./client.js";
  * guess costs a round trip and a slice of the client-error budget.
  *
  * A preset turns "what are my top pages" into a field list that is known to
- * work. The escape hatch stays open: `ga4_report` also takes explicit
+ * work. The escape hatch stays open: `query` takes explicit
  * dimensions and metrics for anything not covered here.
  *
  * Every apiName below survived a verification pass against Google's published

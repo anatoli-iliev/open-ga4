@@ -10,8 +10,8 @@ import type { ResolvedConfig } from "./config.js";
 /**
  * Lazily assembled per-process state.
  *
- * Nothing here runs at plugin load. Credentials are read the first time a tool
- * actually needs them, so installing the plugin does not touch a key file, and
+ * Nothing here runs at startup. Credentials are read the first time a command
+ * actually needs them, so installing the skill does not touch a key file, and
  * an OpenClaw instance that never asks an analytics question never opens one.
  */
 
@@ -106,8 +106,8 @@ export function createRuntime(options: RuntimeOptions): Ga4Runtime {
         throw new Ga4Error(
           "NO_PROPERTY",
           "No GA4 property specified, and no default is configured.",
-          "Pass property_id, or set the GA4_PROPERTY_ID environment variable. " +
-            "Run ga4_diagnose to list the properties this credential can read.",
+          "Pass --property, or set the GA4_PROPERTY_ID environment variable. " +
+            "Run properties to list the ones this credential can read.",
         );
       }
       const propertyId = normalizePropertyId(candidate);

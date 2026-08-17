@@ -4,6 +4,12 @@ This is the click-by-click version. It assumes you have never opened Google Clou
 and do not want to learn it. Every button name and every URL below is exact. Follow it in
 order and it takes about ten minutes.
 
+**You may not need this document.** The agent can drive the whole thing in conversation:
+say "set up my analytics" and it runs `doctor --json`, which reports one blocking step at a
+time, and hands you the link and the exact string to paste for each. This file is here for
+anyone who would rather read the steps themselves, and as the reference when a step does
+not behave.
+
 You will do work in two different Google products. They look related. They are not:
 
 - **Google Cloud Console**: where you create a robot account and switch on two APIs.
@@ -73,8 +79,9 @@ This is the API that runs reports. Without it, nothing works.
 4. Wait for **API Enabled**.
 
 This is the API that lists which properties your credential can reach, by name. Reports
-still run without it, but `ga4_diagnose` will report a failure on the property-listing
-check, and you will have to type property IDs from memory. Turn it on.
+still run without it, but `properties` will return nothing, `doctor` will report a failure
+on the property-listing check, and you will have to type property IDs from memory. Turn it
+on.
 
 Give both about a minute to propagate before you test. A freshly enabled API sometimes
 returns "not enabled" for the first few requests.
@@ -121,7 +128,14 @@ You are now back on the service accounts list, with `ga4-reader` in it.
 service account, from anywhere, until you delete the key in the console. Google will not
 show it to you again; if you lose it, create a new key and delete the old one.
 
-Move it somewhere private and take away everyone else's read access:
+You will hand this key to the skill in step 7, in one of two forms: the file's **contents**,
+pasted into a box, or a **path** to where you saved it. Pasting is fewer steps and is what
+the Control UI's field is for; a path keeps the key in exactly one place on disk. Step 7
+states the trade-off in full. If you intend to paste, you can skip straight there and come
+back to this only if you change your mind.
+
+For the path form, move the file somewhere private and take away everyone else's read
+access:
 
 ```bash
 mkdir -p ~/.openclaw/credentials
@@ -214,44 +228,48 @@ returning an unexplained error.
 
 ## Step 7. Point the skill at the key
 
-Open your OpenClaw config file (`~/.openclaw/openclaw.json`, unless you have moved it with
-`OPENCLAW_CONFIG_DIR`) and add this block, substituting your own property ID:
+Two settings, both environment variables. There is no configuration file to edit.
 
-```json
-{
-  "plugins": {
-    "entries": {
-      "ga4": {
-        "enabled": true,
-        "config": {
-          "credentials": "~/.openclaw/credentials/ga4.json",
-          "propertyId": "123456789"
-        }
-      }
-    }
-  }
-}
-```
+| Variable | Value |
+| --- | --- |
+| `GA4_CREDENTIALS` | The key file's contents, pasted, **or** a path to where you saved it. |
+| `GA4_PROPERTY_ID` | The numeric property ID from step 6. Optional, but without it you get asked which site every time. |
 
-If your config file already has a `plugins.entries` object, add the `"ga4"` key inside it
-rather than adding a second `plugins` block.
+### The easy way: the field in OpenClaw
 
-`propertyId` is the default. Every reporting tool also takes a `property_id` argument that
-overrides it, so one config entry is enough even if you report on several properties.
+The skill declares `GA4_CREDENTIALS` as its primary environment variable, which is what
+gives it a labelled box in OpenClaw's own interface rather than a config file you have to
+find. Open the skill's settings, paste the whole contents of the key file into that box,
+and put the property ID in the `GA4_PROPERTY_ID` field beside it. That is the entire step.
 
-### Alternative: the `GOOGLE_APPLICATION_CREDENTIALS` environment variable
-
-If you would rather not put a path in the config file, or you are migrating from another
-GA4 tool that already sets this variable, you can leave `credentials` out entirely and set
-the standard Google environment variable instead:
+### The other way: your shell
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS=~/.openclaw/credentials/ga4.json
+export GA4_CREDENTIALS=~/.openclaw/credentials/ga4.json
+export GA4_PROPERTY_ID=123456789
 ```
 
-Put that line in your shell profile (`~/.bashrc`, `~/.zshrc`) so it survives a reboot, and
-make sure it is set in the environment OpenClaw itself runs in; a variable exported in a
-terminal is not visible to an app launched from a desktop icon.
+Put those lines in your shell profile (`~/.bashrc`, `~/.zshrc`) so they survive a reboot,
+and make sure they are set in the environment **OpenClaw itself** runs in; a variable
+exported in a terminal is not visible to an app launched from a desktop icon.
+
+### Contents or path: which to use
+
+`GA4_CREDENTIALS` accepts both, and tells them apart by whether the value starts with `{`.
+
+| The value looks like | Read as |
+| --- | --- |
+| `{"type":"service_account",...}` | The key's contents |
+| `/home/you/key.json` or `~/key.json` | A path to the key file |
+
+Pasting the contents is one action instead of three (move the file, `chmod` it, type the
+path correctly), which is why it is the default advice. The cost, stated rather than
+buried: the key then lives inside `~/.openclaw/openclaw.json`, and OpenClaw writes a `.bak`
+beside that file on every change, so it comes to rest in two places rather than one. If
+that matters to you, use the path form; step 4 already locked the file down.
+
+If you paste a key where a path was expected, or the other way round, the skill says so
+without ever echoing the value back at you.
 
 ### Where the skill looks, in order
 
@@ -259,26 +277,38 @@ The first source that yields a usable credential wins. Later sources are not con
 
 | Order | Source |
 | --- | --- |
-| 1 | `plugins.entries.ga4.config.credentials`: the path in your OpenClaw config |
-| 2 | `GOOGLE_APPLICATION_CREDENTIALS`: the environment variable |
-| 3 | `~/.config/gcloud/application_default_credentials.json`: whatever `gcloud auth application-default login` last wrote |
+| 1 | `GA4_CREDENTIALS`, when it starts with `{`: the key's contents, read directly |
+| 2 | `GA4_CREDENTIALS`, otherwise: the file at that path |
+| 3 | `GOOGLE_APPLICATION_CREDENTIALS`: Google's standard variable, so an existing gcloud or migrated setup keeps working |
+| 4 | `~/.config/gcloud/application_default_credentials.json`: whatever `gcloud auth application-default login` last wrote |
 
-A consequence worth knowing: if `GOOGLE_APPLICATION_CREDENTIALS` is set to a stale path, the
-skill will not fall through to your gcloud credentials. It uses source 2 and fails there.
-`ga4_diagnose` reports every location it checked and what it found in each, so this is
-visible rather than mysterious.
+Two consequences worth knowing.
+
+**A pasted key that does not parse stops the search.** If `GA4_CREDENTIALS` starts with `{`
+and is not valid service-account JSON, the skill reports that and does not try the other
+sources. Somebody who pasted a key and got it wrong needs to hear that the key is wrong,
+not that gcloud credentials are also absent.
+
+**A stale path does not.** If a path in `GA4_CREDENTIALS` or
+`GOOGLE_APPLICATION_CREDENTIALS` points at a file that is gone or unreadable, the search
+carries on down the list, and it can succeed with a gcloud credential you had forgotten was
+there. That is why `doctor` prints the source it actually used, along with every location
+it checked and what it found in each: if a report comes back for the wrong account, that
+line is where it says so.
 
 ---
 
 ## Step 8. Verify
 
-Restart OpenClaw so it picks up the config, then ask the agent to run the diagnostic: "run
-ga4_diagnose" is enough. A healthy setup looks like this:
+Restart OpenClaw so it picks up the new environment, then ask the agent to check the setup:
+"check my analytics setup" is enough, and it runs `doctor` for you. To run it yourself,
+`openclaw skills info open-ga4` prints the installed path, and the command is
+`node <skill-dir>/lib/cli.js doctor`. A healthy setup looks like this:
 
 ```
 ## GA4 setup check
 
-- **PASS** Google credentials: loaded from plugin config (credentials), service account ga4-reader@openclaw-ga4-123456.iam.gserviceaccount.com
+- **PASS** Google credentials: loaded from GA4_CREDENTIALS (file) at /home/you/.openclaw/credentials/ga4.json, service account ga4-reader@openclaw-ga4-123456.iam.gserviceaccount.com
 - **PASS** Admin API and property access: 2 properties reachable
 - **PASS** Data API report: property 123456789 returned 12480 active users over the last 7 days
 - **PASS** Privacy settings: redaction on; user-identifying dimensions blocked; property allowlist not set
@@ -307,6 +337,11 @@ Checks run in dependency order and the run stops at the first thing that is genu
 blocking, so you get one fix to apply rather than a cascade of downstream noise. Each
 failure prints a **Fix:** line under it naming the exact next action.
 
+`doctor --json` answers a narrower question and is what the agent uses: instead of the
+whole checklist it reports the single next thing you must do, as `blocked_on` plus a link
+and the exact string to paste. Every value it can report has a section in
+[SKILL.md](SKILL.md).
+
 Then ask a real question ("what were my top pages last month?") and confirm you get a
 table with numbers in it.
 
@@ -317,20 +352,20 @@ table with numbers in it.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `403` mentioning **`SERVICE_DISABLED`**, or the message "The Google Analytics Data API is not enabled in project *X*" | Step 2a was skipped, or was done while the project picker was pointing at a different project. | Open <https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com>, confirm the project picker shows the project named in the error, click **Enable**, wait a minute, retry. |
-| The same error but naming **`analyticsadmin.googleapis.com`**, or `ga4_diagnose` failing only on "Admin API and property access" | Step 2b was skipped. Enabling the Data API does not enable the Admin API; they are two separate switches. | Open <https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com> and click **Enable**. Reports work meanwhile; pass a numeric property ID directly. |
-| `403` **without** `SERVICE_DISABLED`, "cannot read property 123456789" | Step 5 was skipped, or was done on a different property, or the address pasted into Analytics does not match the key file's `client_email`. This is the most common failure by a wide margin. | In Analytics: **Admin → Property access management → + → Add users**, paste the `client_email` from your key file, untick the email notification, select **Viewer**, click **Add**. Then re-run `ga4_diagnose` and check the address it prints matches character for character. |
+| The same error but naming **`analyticsadmin.googleapis.com`**, or `doctor` failing only on "Admin API and property access" | Step 2b was skipped. Enabling the Data API does not enable the Admin API; they are two separate switches. | Open <https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com> and click **Enable**. Reports work meanwhile; pass a numeric property ID directly. |
+| `403` **without** `SERVICE_DISABLED`, "cannot read property 123456789" | Step 5 was skipped, or was done on a different property, or the address pasted into Analytics does not match the key file's `client_email`. This is the most common failure by a wide margin. | In Analytics: **Admin → Property access management → + → Add users**, paste the `client_email` from your key file, untick the email notification, select **Viewer**, click **Add**. Then re-run `doctor` and check the address it prints matches character for character. |
 | `403` on one property while others work | Access is granted per property. The others got step 5; this one did not. | Repeat step 5 on that property. Or grant at the account level if you genuinely want the agent to read everything under the account. |
-| `404` / `NOT_FOUND`, "Google Analytics has no property with id *N*" | The number is not a property that exists. Usually a typo, a digit dropped, or a number copied from a different Google product. | Run `ga4_diagnose` and use a property ID from the table it prints. Or re-read it from **Admin → Property details**. |
-| "*G-XXXXXXXXXX* is a measurement id, which identifies a data stream rather than a property" | You used the measurement ID from your website's tracking tag. It is the string most people have to hand, and the reporting API cannot use it. | Get the numeric property ID from **Admin → Property details**, top right, 9–10 digits. Put that in `propertyId`. |
+| `404` / `NOT_FOUND`, "Google Analytics has no property with id *N*" | The number is not a property that exists. Usually a typo, a digit dropped, or a number copied from a different Google product. | Run `properties` and use a property ID from the table it prints. Or re-read it from **Admin → Property details**. |
+| "*G-XXXXXXXXXX* is a measurement id, which identifies a data stream rather than a property" | You used the measurement ID from your website's tracking tag. It is the string most people have to hand, and the reporting API cannot use it. | Get the numeric property ID from **Admin → Property details**, top right, 9–10 digits. Put that in `GA4_PROPERTY_ID`. |
 | "*UA-12345-1* is not a GA4 property id. Expected a numeric id such as 123456789" | That is a Universal Analytics property ID. Universal Analytics was shut down and its API no longer exists. | There is no fix for a UA property; the data is not reachable through any current API. You need a GA4 property. If you have one, its ID is under **Admin → Property details**. |
 | `invalid_grant`, or "This machine's clock is about *N* seconds behind Google's" | Authentication is a token this machine signs with a timestamp inside it. If the clock has drifted more than about a minute, Google rejects every signature. It looks exactly like a bad key, and people regenerate perfectly good keys over it. | Turn on network time sync: `sudo timedatectl set-ntp true` on Linux, **Date & Time → Set automatically** on macOS and Windows. Your key and your Analytics access are fine. |
 | "Google Analytics has run out of API quota for this property" (`429`) | GA4's API quota is per property and is **shared**: the GA4 web interface, Looker Studio, exports and every other API client draw from the same pool. Long date ranges, many dimensions and large row limits each cost more. | Daily allowances reset at midnight US Pacific; hourly ones reset within the hour. Meanwhile ask for fewer dimensions, shorter ranges and smaller row limits. If it recurs daily, something else on your account is consuming the quota. |
 | A report comes back with no rows, and no error | Almost always the date range predates the property. GA4 has no data before the day collection started, and asking for "last year" on a property created in March returns an empty, entirely correct answer. | Ask for a range you know has data ("last 7 days") and work backwards. Check when the property started collecting under **Admin → Property details**. Also check you are pointed at the production property and not a staging one. |
 | A report comes back with no rows, and "last 7 days" also returns nothing | The property is not receiving events at all: the tag was removed, the site moved, or this is a property that was created but never wired up. | Open the Realtime report in <https://analytics.google.com> and load your own site in another tab. If Realtime stays empty, the problem is the tracking tag on your site, not this skill. |
-| "The request reached Google without a usable credential", or the credentials check fails outright | No credential source resolved: the path in config does not exist, `GOOGLE_APPLICATION_CREDENTIALS` points somewhere stale, or the file is not readable by the user OpenClaw runs as. | Run `ga4_diagnose`: it lists every location it checked and what it found in each. Then fix the path, or re-do step 4. |
+| "The request reached Google without a usable credential", or the credentials check fails outright | No credential source resolved: `GA4_CREDENTIALS` is unset or names a path that does not exist, `GOOGLE_APPLICATION_CREDENTIALS` points somewhere stale, or the file is not readable by the user OpenClaw runs as. | Run `doctor`: it lists every location it checked and what it found in each. Then fix the path, or re-do step 4. |
 | "service-account file is missing client_email or private_key" | The file at that path is JSON but is not a Google service-account key, commonly an OAuth *client* secret downloaded from the Credentials page instead of a key from the service account's **Keys** tab. | Redo step 4: <https://console.cloud.google.com/iam-admin/serviceaccounts> → click `ga4-reader` → **Keys** → **Add key** → **Create new key** → **JSON**. |
-| "Google rejected the credential" after it previously worked | The key was deleted or the service account was disabled in Google Cloud. Tokens refresh automatically, so this is not an expiry. | Create a fresh JSON key (step 4) and point `credentials` at it. Delete the old key in the console while you are there. |
-| `ga4_diagnose` shows **FAIL** on Privacy settings, "redaction is turned OFF" | `privacy.redact` was set to `false` in config. | Remove `plugins.entries.ga4.config.privacy.redact`, or set it to `true`. |
+| "Google rejected the credential" after it previously worked | The key was deleted or the service account was disabled in Google Cloud. Tokens refresh automatically, so this is not an expiry. | Create a fresh JSON key (step 4) and put it in `GA4_CREDENTIALS`. Delete the old key in the console while you are there. |
+| `doctor` shows **FAIL** on Privacy settings, "redaction is turned OFF" | `GA4_REDACT` is set to a false value (`0`, `false`, `no` or `off`). | Unset `GA4_REDACT`, or set it to `1`, `true`, `yes` or `on`. There is no command-line flag for this, deliberately: see the Privacy section of [SKILL.md](SKILL.md). |
 
 ---
 
@@ -374,17 +409,17 @@ Two honest trade-offs before you choose this path:
    A service account key does not. For anything that runs unattended, use the service
    account.
 
-If both a service-account path and ADC are present, the service-account path wins; see the
-resolution order in step 7.
+If both a service-account key and ADC are present, the service account wins: `GA4_CREDENTIALS`
+is source 1 or 2 and gcloud is source 4. See the resolution order in step 7.
 
 ---
 
 ## Still stuck
 
-Run `ga4_diagnose` and read the **Fix:** line under the first `FAIL`. The checks run in
+Run `doctor` and read the **Fix:** line under the first `FAIL`. The checks run in
 dependency order, so the first failure is the real one; everything after it is a consequence.
 
-If the fix line does not resolve it, open an issue with the `ga4_diagnose` output. It never
+If the fix line does not resolve it, open an issue with the `doctor` output. It never
 prints key material (credentials are reported as present or absent, by source, and never by
 content), so it is safe to paste.
 

@@ -189,7 +189,7 @@ describe("caveatsFor", () => {
   it("passes Google's own empty reason through verbatim", () => {
     const [caveat] = caveatsFor({ emptyReason: "NO_DATA_IN_DATE_RANGE" }, false);
     expect(caveat).toContain("NO_DATA_IN_DATE_RANGE");
-    expect(caveat).toMatch(/Nothing was filtered out by this plugin/);
+    expect(caveat).toMatch(/Nothing was filtered out by this skill/);
   });
 
   it("turns sampling metadata into a readable proportion", () => {

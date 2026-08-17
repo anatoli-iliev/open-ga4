@@ -2,7 +2,7 @@ import type { FilterExpression, MatchType } from "./client.js";
 import { Ga4RequestError } from "./limits.js";
 
 /**
- * A small filter vocabulary for `ga4_query`.
+ * A small filter vocabulary for the `query` command.
  *
  * Deliberately narrower than the API's full `FilterExpression` tree. A model
  * composing nested and/or/not groups from a free-form schema gets it wrong

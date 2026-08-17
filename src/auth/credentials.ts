@@ -18,7 +18,7 @@ export type Credential =
   | {
       kind: "service_account";
       account: ServiceAccount;
-      /** Where it came from, for `ga4_diagnose`. Never contains key material. */
+      /** Where it came from, for `doctor`. Never contains key material. */
       source: string;
     }
   | {

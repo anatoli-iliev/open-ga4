@@ -64,7 +64,7 @@ const SAMPLE: RunReportResponse = {
   rowCount: 1,
 };
 
-describe("ga4_report", () => {
+describe("the report command", () => {
   it("expands a preset into verified field names", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE);
     await runReport(runtime, { report: "top_pages" });
@@ -162,13 +162,13 @@ describe("ga4_report", () => {
       GA4_PROPERTY_ALLOWLIST: "555000111",
     });
     await expect(runReport(runtime, { report: "top_pages" })).rejects.toThrow(
-      /not in this plugin's allowlist/,
+      /not in this skill's allowlist/,
     );
     expect(calls).toHaveLength(0);
   });
 });
 
-describe("ga4_compare", () => {
+describe("the compare command", () => {
   it("asks for two non-overlapping ranges of equal length", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE);
     await runCompare(runtime, { report: "channels", date_range: "last 7 days" });
@@ -187,7 +187,7 @@ describe("ga4_compare", () => {
   });
 });
 
-describe("ga4_realtime", () => {
+describe("the live command", () => {
   it("uses the realtime endpoint with a minute range, not a date range", async () => {
     const { runtime, realtimeCalls, calls } = stubRuntime(SAMPLE);
     await runRealtime(runtime, {});
@@ -206,7 +206,7 @@ describe("ga4_realtime", () => {
   });
 });
 
-describe("ga4_query", () => {
+describe("the query command", () => {
   it("rewrites a metric Google renamed, and says so", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE);
     const result = await runQuery(runtime, { metrics: ["conversions"] });
@@ -260,7 +260,7 @@ describe("ga4_query", () => {
   });
 });
 
-describe("ga4_query filters", () => {
+describe("the query command's filters", () => {
   it("builds a dimension filter and says what it narrowed to", async () => {
     const { runtime, calls } = stubRuntime(SAMPLE);
     const result = await runQuery(runtime, {

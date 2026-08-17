@@ -20,10 +20,16 @@ npm install
 Node 22 or newer. The HTTP layer uses `AbortSignal.any` and `AbortSignal.timeout`, and the
 package is native ESM throughout.
 
-There is exactly one runtime dependency: `typebox`. That is a headline claim in the README
-and in `docs/DESIGN.md`, so adding a second one is a design change, not a chore; open an
-issue first. Authentication is implemented on `node:crypto` and the GA4 REST API is called
-with `fetch`; both stay that way.
+There are **zero runtime dependencies**. `package.json` has no `dependencies` and no
+`peerDependencies`, and every import in `src/` is either relative or `node:`-prefixed. That
+is a headline claim in the README, in `SECURITY.md` and in `PRIVACY.md`, and it is what
+makes "install and it runs" true, because there is no `node_modules` to be missing. Adding
+the first one is a design change, not a chore; open an issue first. Two tests hold the line:
+one asserts the manifest is empty, the other walks `src/` and fails on any non-relative,
+non-`node:` import, because a `dependencies: {}` check passes happily while a source file
+imports something that happens to be present as a transitive devDependency. Authentication
+is implemented on `node:crypto` and the GA4 REST API is called with `fetch`; both stay that
+way.
 
 ---
 
@@ -54,21 +60,21 @@ the vitest summary of the run you actually did.
 
 ## Never run `openclaw` directly from this repo
 
-There is nothing here to validate through the CLI. `openclaw plugins build` and
-`openclaw plugins validate` understand only `defineToolPlugin` entries and reject this one,
-which is a `definePluginEntry`, so `openclaw.plugin.json` is maintained by hand and
-`src/index.test.ts` asserts it matches what the code registers. Run `npm run check` instead.
+There is nothing here to validate through the CLI. `npm run check` is the whole gate:
+typecheck, tests, build. The skill's own contract lives in `SKILL.md` and is checked by
+`src/docs/skill.test.ts`, not by an OpenClaw subcommand.
 
-If you do run the OpenClaw CLI against this repo for any other reason, use the wrapper:
+If you do run the OpenClaw CLI against this repo (installing the local checkout as a skill,
+for instance), use the wrapper:
 
 ```bash
 ./scripts/openclaw-sandbox.sh <command>
 ```
 
-`openclaw plugins build` and `openclaw plugins validate` boot enough of the host runtime to
-run config doctor and state migrations. Against a real installation, that can rewrite your
-`openclaw.json` and relocate your state files, while you are debugging a plugin, which is
-the worst possible moment to discover it.
+Several OpenClaw subcommands boot enough of the host runtime to run config doctor and state
+migrations. Against a real installation, that can rewrite your `openclaw.json` and relocate
+your state files, while you are debugging, which is the worst possible moment to discover
+it.
 
 `scripts/openclaw-sandbox.sh` redirects `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`,
 `XDG_DATA_HOME`, `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_DIR` into a throwaway `.sandbox/`
@@ -121,14 +127,30 @@ agree to.
 
 ## Why a prose edit can fail the build
 
-`src/docs.test.ts` reads `README.md`, `SETUP.md`, `PRIVACY.md`, `SECURITY.md`,
-`CONTRIBUTING.md` and `CHANGELOG.md`, and fails on:
+`src/docs.test.ts` reads `README.md`, `SETUP.md`, `SKILL.md`, `PRIVACY.md`, `SECURITY.md`,
+`CONTRIBUTING.md`, `CHANGELOG.md` and `docs/DESIGN.md`, and fails on:
 
-- a JSON block that does not parse, or a `plugins.entries.ga4.config` example that the real
-  `configSchema` would reject;
-- a `ga4_`-prefixed tool name that is not registered, in those documents, and separately in
-  every non-test file under `src/`, because six error messages once told users to run a tool
-  that had been folded into another one and never existed;
+- a JSON block that does not parse;
+- any mention of the plugin configuration block this project used to require, in the
+  shipped source or the shipped documentation. That block no longer exists, and a hint
+  naming it tells a stuck user to edit something that is not there. The test names the
+  exact string; this file does not, so that the sweep does not trip over the sentence
+  describing it;
+- a `GA4_`-prefixed environment variable named in the documentation that no shipped source
+  file reads;
+- a claim about the number of runtime dependencies that disagrees with `package.json`,
+  in the documentation or in `.github/dependabot.yml` and `.github/workflows/ci.yml`,
+  because a comment in repository config made that claim and outlived the dependency;
+- a retired tool name (`ga4_` plus report, compare, realtime, query, fields, diagnose or
+  properties) anywhere under `src/` or in the shipped documentation. They were tool names
+  under the plugin API and are commands now, so a message naming one sends a stuck user
+  to type something that does not exist;
+- this project calling itself a plugin: in the shipped source, the word at all; in the
+  documentation, only the present-tense self-reference, meaning the word directly after
+  "this", or after "the" and directly before a present-tense verb. Discussing the former
+  plugin in the past tense is deliberate and stays, which is why the documentation half
+  is narrow. This sentence does not spell either pattern out, so that the sweep does not
+  trip over the description of itself;
 - a backticked identifier shaped like a preset id that is not in `PRESETS`;
 - an `npm run` script that is not in `package.json`;
 - a `googleapis.com` host that is not in `ALLOWED_HOSTS`, apart from the two named in
@@ -136,9 +158,30 @@ agree to.
 - `PRIVACY.md` not naming every allowed host, or not stating that the reader's own model
   provider still sees the data.
 
-So renaming a tool, a script or a preset breaks the build until the sentence that mentions
-it is updated in the same commit. What the test cannot check is whether a sentence is true.
-That is what review is for, and it is the harder half.
+`src/docs/skill.test.ts` does the same job for the skill contract and fails on:
+
+- a description over 300 characters, or a frontmatter `name` or `version` that disagrees
+  with `package.json`;
+- anything in `requires.env`, which would report "needs setup" forever for the three
+  credential sources that variable is not;
+- a command quoted in `SKILL.md` or `README.md` that `parseArgs` rejects;
+- a command name in the decision table or in the reference table that is not in
+  `COMMANDS`, or a command in `COMMANDS` that either table leaves out. Both tables are
+  checked, because an invented name in the reference section would reach a reader exactly
+  as easily as one in the decision table;
+- a flag documented against a command that does not accept it, or a flag a command
+  accepts that the flag table does not document, both checked against `KNOWN_FLAGS`.
+  `--help` is the one exception, because `parseArgs` handles it before it validates
+  flags at all;
+- a `blocked_on` value the code can emit that has no section in the setup tree, or a
+  section for a value the code cannot emit;
+- an environment variable the code reads that the frontmatter does not declare, or the
+  other way round. That last one is a publishing problem rather than a documentation one:
+  ClawHub's security review compares declared metadata against actual behaviour.
+
+So renaming a command, a script, a variable or a preset breaks the build until the sentence
+that mentions it is updated in the same commit. What the tests cannot check is whether a
+sentence is true. That is what review is for, and it is the harder half.
 
 ---
 
@@ -167,8 +210,8 @@ and both the docs and the model's training data are full of names that no longer
 Two of the research briefs behind this project produced hand-maintained field lists that
 disagreed with each other, which is the whole argument for checking against the property.
 
-The easiest check is the skill itself: run `ga4_fields` with the field you intend to use
-and confirm the exact `apiName` comes back.
+The easiest check is the skill itself: run `fields` with the field you intend to use and
+confirm the exact `apiName` comes back.
 
 For the receipt to paste into the pull request, read the metadata endpoint directly:
 

@@ -10,7 +10,8 @@ import { assertDimensionsAllowed, thresholdProneDimensions } from "../privacy/po
 import type { Ga4Runtime } from "../runtime.js";
 
 /**
- * The reporting tools: `ga4_report`, `ga4_compare`, `ga4_realtime`, `ga4_query`.
+ * The reporting operations behind the `report`, `compare`, `live` and
+ * `query` commands.
  *
  * They share one pipeline (resolve property, apply renames, check policy,
  * enforce limits, call, format), so a privacy or correctness fix lands in all
@@ -148,7 +149,7 @@ export async function runReport(
       throw new Ga4Error(
         "INVALID_REQUEST",
         `The ${preset.id} report has no dimension to filter on.`,
-        "Choose a report with rows (such as top_pages or traffic_sources), or use ga4_query.",
+        "Choose a report with rows (such as top_pages or traffic_sources), or use query.",
       );
     }
     dimensionFilter = {
@@ -175,7 +176,7 @@ export async function runReport(
   const response = await client.runReport(propertyId, request, signal);
 
   return present(response, runtime, {
-    tool: "ga4_report",
+    tool: "report",
     title: preset.intent.replace(/\.$/, ""),
     dateRangeLabel: range.label,
     notes,
@@ -243,7 +244,7 @@ export async function runCompare(
   ];
 
   return present(response, runtime, {
-    tool: "ga4_compare",
+    tool: "compare",
     title: `${preset.intent.replace(/\.$/, "")}: period comparison`,
     dateRangeLabel: `${current.label} vs ${previous.label}`,
     notes,
@@ -295,7 +296,7 @@ export async function runRealtime(
   );
 
   return present(response, runtime, {
-    tool: "ga4_realtime",
+    tool: "live",
     title: preset.intent.replace(/\.$/, ""),
     dateRangeLabel: "last 30 minutes",
     notes: [
@@ -375,7 +376,7 @@ export async function runQuery(
   );
 
   return present(response, runtime, {
-    tool: "ga4_query",
+    tool: "query",
     title: "Custom report",
     dateRangeLabel: range.label,
     notes,

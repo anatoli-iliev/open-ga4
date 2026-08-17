@@ -84,12 +84,12 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
   }
   if (!(error instanceof Ga4HttpError)) {
     const message = error instanceof Error ? error.message : String(error);
-    return new Ga4Error("UNEXPECTED", redactText(message), "Run ga4_diagnose to check the setup.");
+    return new Ga4Error("UNEXPECTED", redactText(message), "Run doctor to check the setup.");
   }
 
   const now = context.now ?? Date.now;
   const { info, help, status } = detailsOf(error.body);
-  const principal = context.principal ?? "this plugin's Google credential";
+  const principal = context.principal ?? "this skill's Google credential";
 
   if (error.serverDate) {
     const skewMs = error.serverDate.getTime() - now();
@@ -136,7 +136,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       `${principal} cannot read ${property}. Google gives the same answer whether the property ` +
         `does not exist or the credential simply cannot see it, so it may be either.`,
       `In Google Analytics open Admin > Property access management, add ${principal}, and give it ` +
-        `the Viewer role. Then run ga4_diagnose to confirm what this credential can reach.`,
+        `the Viewer role. Then run doctor to confirm what this credential can reach.`,
     );
   }
 
@@ -144,7 +144,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
     return new Ga4Error(
       "PROPERTY_NOT_FOUND",
       `Google Analytics has no property with id ${context.propertyId ?? "that id"}.`,
-      "Run ga4_diagnose to list the properties this credential can reach, or find the id in " +
+      "Run properties to list the ones this credential can reach, or find the id in " +
         "Google Analytics under Admin > Property details.",
     );
   }
@@ -154,7 +154,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       return new Ga4Error(
         "CREDENTIALS_MISSING",
         "The request reached Google without a usable credential.",
-        "Run ga4_diagnose. It reports every location this plugin checked for credentials and what " +
+        "Run doctor. It reports every location this skill checked for credentials and what " +
           "it found in each.",
       );
     }
@@ -162,7 +162,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       "CREDENTIALS_REJECTED",
       "Google rejected the credential.",
       "Tokens are refreshed automatically, so this usually means the service-account key was " +
-        "revoked or deleted in Google Cloud. Generate a new key and point the plugin at it.",
+        "revoked or deleted in Google Cloud. Generate a new key and put it in GA4_CREDENTIALS.",
     );
   }
 
@@ -180,7 +180,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
     return new Ga4Error(
       "INVALID_REQUEST",
       "Google Analytics rejected the query as invalid.",
-      "Run ga4_fields to see the dimensions and metrics this property actually has, including its " +
+      "Run fields to see the dimensions and metrics this property actually has, including its " +
         "custom ones. Some combinations are also impossible because the fields are measured at " +
         "different scopes.",
     );
@@ -192,7 +192,7 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
       `Google Analytics returned a server error (HTTP ${error.status}). This is on Google's side, ` +
         `not a problem with the query.`,
       "Try again shortly. Repeated server errors also consume a separate hourly allowance, so this " +
-        "plugin stops retrying after a few attempts rather than locking the property out.",
+        "skill stops retrying after a few attempts rather than locking the property out.",
       true,
     );
   }
@@ -200,6 +200,6 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
   return new Ga4Error(
     "UNEXPECTED",
     `Google Analytics returned HTTP ${error.status}: ${redactText(error.message)}`,
-    "Run ga4_diagnose to check credentials, API enablement and property access.",
+    "Run doctor to check credentials, API enablement and property access.",
   );
 }

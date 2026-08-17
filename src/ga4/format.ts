@@ -184,7 +184,7 @@ export function caveatsFor(metadata: ResponseMetaData | undefined, hasCurrencyMe
   if (metadata.emptyReason) {
     caveats.push(
       `Google returned no rows and gave this reason: "${metadata.emptyReason}". Nothing was ` +
-        `filtered out by this plugin.`,
+        `filtered out by this skill.`,
     );
   }
 

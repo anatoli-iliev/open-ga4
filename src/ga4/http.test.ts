@@ -15,7 +15,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("the egress allowlist", () => {
-  it("names exactly the three Google hosts this plugin needs", () => {
+  it("names exactly the three Google hosts this skill needs", () => {
     expect([...ALLOWED_HOSTS].sort()).toEqual([
       "analyticsadmin.googleapis.com",
       "analyticsdata.googleapis.com",

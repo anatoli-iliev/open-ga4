@@ -135,7 +135,7 @@ export function assertWithinLimits(shape: ReportShape): void {
     if (shape.limit > LIMITS.MAX_ROWS) {
       throw new Ga4RequestError(
         "LIMIT_TOO_LARGE",
-        `This plugin returns at most ${LIMITS.MAX_ROWS} rows per report, to keep results readable ` +
+        `This skill returns at most ${LIMITS.MAX_ROWS} rows per report, to keep results readable ` +
           `and quota use low; ${shape.limit} were requested. Narrow the query, or page with offset.`,
       );
     }
