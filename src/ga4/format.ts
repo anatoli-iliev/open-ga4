@@ -266,6 +266,18 @@ export function formatReport(
   const headers = [...dimensionHeaders, ...metricHeaders.map((header) => header.name ?? "")];
 
   const caveats = [...(options.notes ?? []), ...caveatsFor(response.metadata, hasCurrencyMetric)];
+  if (!options.redaction.enabled) {
+    // Said on every report, not only when something would have been masked.
+    // The count caveat below cannot cover this: with redaction off nothing is
+    // masked, so the count is zero and the report reads exactly like one that
+    // happened to contain no personal data. Every channel a model reads has to
+    // carry it, or the difference is invisible on the one it happens to use.
+    caveats.push(
+      "Redaction is turned off for this skill (GA4_REDACT), so dimension values are shown " +
+        "exactly as Google returned them. Anything personal in a URL, page title or search " +
+        "term is in the rows above and in this conversation.",
+    );
+  }
   if (redactions > 0) {
     caveats.push(
       `${redactions} value${redactions === 1 ? "" : "s"} in this report matched a personal-data ` +

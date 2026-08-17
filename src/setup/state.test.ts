@@ -126,6 +126,47 @@ describe("setupStateFrom", () => {
     expect(state.blocked_on).toBe("ok");
   });
 
+  it("still says so, in warnings, rather than reporting a clean bill of health", () => {
+    // Not blocking is not the same as not worth saying. This JSON is the only
+    // thing an agent reads on this command, and while a failing check with no
+    // code was skipped outright, `doctor --json` answered "ok: true" for a
+    // setup that sends unredacted personal data to a model provider. The
+    // markdown checklist said it; the channel the agent actually uses did not.
+    const state = setupStateFrom([
+      pass("credentials", "Google credentials"),
+      pass("data_api_report", "Data API report"),
+      {
+        id: "privacy_settings" as const,
+        label: "Privacy settings",
+        status: "fail" as const,
+        detail: "redaction is turned OFF",
+        fix: "Unset the GA4_REDACT environment variable.",
+      },
+    ]);
+    expect(state.blocked_on).toBe("ok");
+    expect(state.warnings).toEqual(["redaction is turned OFF Unset the GA4_REDACT environment variable."]);
+  });
+
+  it("carries a warning alongside a blocking step too, rather than losing it", () => {
+    const state = setupStateFrom([
+      fail("credentials", "Google credentials", "CREDENTIALS_MISSING"),
+      {
+        id: "privacy_settings" as const,
+        label: "Privacy settings",
+        status: "fail" as const,
+        detail: "redaction is turned OFF",
+      },
+    ]);
+    expect(state.blocked_on).toBe("no_credentials");
+    expect(state.warnings).toEqual(["redaction is turned OFF"]);
+  });
+
+  it("omits warnings entirely when there is nothing to warn about", () => {
+    const state = setupStateFrom([pass("credentials", "Google credentials")]);
+    expect(state.warnings).toBeUndefined();
+    expect(JSON.stringify(state)).not.toContain("warnings");
+  });
+
   it("keeps only the service-account address, nothing else from the credential, in the JSON", () => {
     // The address handed back for no_property_grant comes from a key file.
     // Nothing else about that file (its path, its key material, any other

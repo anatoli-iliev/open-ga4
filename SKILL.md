@@ -145,10 +145,16 @@ Hand the user one step at a time. Somebody given five simultaneous problems does
 nothing; somebody given one does it. `next.action` and `next.paste` are written to be
 read aloud, so prefer them over paraphrasing.
 
+A `warnings` array appears when something is worth saying but is blocking nothing, so
+it can accompany any `blocked_on`, including `ok`. Today it means redaction has been
+turned off. Say it: the person reading your answer is not necessarily the person who
+set that variable.
+
 ### blocked_on: `ok`
 
 Setup is complete. Say so in one line and go straight to answering the question they
-actually asked. Do not read the rest of this section to them.
+actually asked. Do not read the rest of this section to them. If `warnings` is present,
+say that line too, then carry on.
 
 ### blocked_on: `no_credentials`
 
@@ -539,6 +545,11 @@ By default: dimension values are redacted before you see them (emails, phone num
 UUIDs, JWTs, Luhn-valid card numbers, long opaque tokens, and query-parameter values
 outside a keep list), `userId` and user-scoped custom dimensions are refused, and
 nothing is written to disk.
+
+If somebody has turned redaction off, every report says so in its caveats and
+`doctor --json` reports it in `warnings`. Pass that on rather than dropping it: the rows
+then contain whatever personal data was in the URLs, and they are now in this
+conversation and with the model provider.
 
 The limit worth stating plainly: report data you read is sent to whatever model
 provider is configured, under that provider's terms. Redaction changes what is in those

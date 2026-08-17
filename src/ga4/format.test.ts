@@ -154,6 +154,36 @@ describe("redaction in rendered output", () => {
     );
     expect(result.markdown).toMatch(/matched a personal-data pattern and were masked/);
   });
+
+  /**
+   * With redaction off, nothing is masked, so the count caveat above never
+   * fires and the report is indistinguishable from one that happened to
+   * contain no personal data. Silence is the wrong default here: the reader is
+   * a model that is about to repeat these values to somebody, and the person
+   * who turned redaction off is not necessarily the person reading the answer.
+   */
+  describe("with redaction turned off", () => {
+    const off = { ...redaction, enabled: false };
+
+    it("says so on every report, even one with nothing personal in it", () => {
+      const result = formatReport(report(), { title: "t", redaction: off });
+      expect(result.caveats.join(" ")).toContain("GA4_REDACT");
+      expect(result.markdown).toMatch(/Redaction is turned off/);
+    });
+
+    it("carries the caveat in the structured output as well as the markdown", () => {
+      // --json returns `caveats`, and an agent reading only that must not get
+      // a quieter answer than one reading the table.
+      const result = formatReport(report(), { title: "t", redaction: off });
+      expect(result.caveats.some((caveat) => /Redaction is turned off/.test(caveat))).toBe(true);
+    });
+
+    it("says nothing of the kind when redaction is on", () => {
+      const result = formatReport(report(), { title: "t", redaction });
+      expect(result.markdown).not.toMatch(/Redaction is turned off/);
+      expect(result.caveats.join(" ")).not.toContain("GA4_REDACT");
+    });
+  });
 });
 
 describe("row capping", () => {

@@ -46,6 +46,19 @@ export type SetupState = {
   next?: { where: string; action: string; paste?: string; role?: string };
   url?: string;
   properties?: Array<{ id: string; name: string }>;
+  /**
+   * Failing checks that are not blocking anything, so they never become
+   * `blocked_on` and never make `ok` false. Today that is exactly one: the
+   * privacy-settings check, which fails when redaction has been turned off.
+   *
+   * It needs a channel of its own precisely because it is not blocking. Before
+   * this field, redaction being off was visible only in the markdown checklist
+   * a person reads; the JSON an agent reads said `ok: true` and named nothing,
+   * so the agent could not tell a user their reports were unredacted. Omitted
+   * entirely when there is nothing to warn about, so the common shape stays as
+   * small as it was.
+   */
+  warnings?: string[];
 };
 
 type Next = NonNullable<SetupState["next"]>;
@@ -201,7 +214,10 @@ function mapped(code: string, principal?: string, detail?: string): Mapped {
  * - A check with no `code` at all (the privacy-settings check, which is not
  *   error-driven) is outside this taxonomy entirely: it is a standing
  *   posture, not a reason a report cannot run, so it is not treated as
- *   blocking.
+ *   blocking. It is not silently dropped either: a failing one lands in
+ *   `warnings`, because "your reports are unredacted" is something the agent
+ *   has to be able to say, and `ok: true` with nothing beside it said the
+ *   opposite.
  * - ADMIN_API_DISABLED is skipped when the "data_api_report" check
  *   specifically passed later: that is the one check that actually proves
  *   reports work. Matching on *any* later check passing is wrong: runDiagnose
@@ -218,6 +234,11 @@ export function setupStateFrom(checks: Check[], principal?: string): SetupState 
   const dataApiReportPassedLater = (fromIndex: number): boolean =>
     checks.slice(fromIndex + 1).some((check) => check.id === "data_api_report" && check.status === "pass");
 
+  const warnings = checks
+    .filter((check) => check.status === "fail" && check.code === undefined)
+    .map((check) => (check.fix ? `${check.detail} ${check.fix}` : check.detail));
+  const withWarnings = warnings.length > 0 ? { warnings } : {};
+
   for (let i = 0; i < checks.length; i += 1) {
     const check = checks[i]!;
     if (check.status !== "fail" || check.code === undefined) {
@@ -233,8 +254,14 @@ export function setupStateFrom(checks: Check[], principal?: string): SetupState 
       ...(principal !== undefined ? { principal } : {}),
       next,
       ...(url !== undefined ? { url } : {}),
+      ...withWarnings,
     };
   }
 
-  return { ok: true, blocked_on: "ok", ...(principal !== undefined ? { principal } : {}) };
+  return {
+    ok: true,
+    blocked_on: "ok",
+    ...(principal !== undefined ? { principal } : {}),
+    ...withWarnings,
+  };
 }
