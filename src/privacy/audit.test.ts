@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NULL_AUDIT_LOGGER, createAuditLogger } from "./audit.js";
 
 function capture() {
@@ -75,6 +78,66 @@ describe("createAuditLogger", () => {
 
     await expect(logger.record({ tool: "report", propertyId: "1" })).resolves.toBeUndefined();
     expect(onError).toHaveBeenCalledWith(expect.stringContaining("/nope/audit.log"));
+  });
+});
+
+/**
+ * The default `append`, which is `node:fs/promises` `appendFile`, exercised
+ * against a real file in a temporary directory.
+ *
+ * Every test above injects `append`, which is the right shape for asserting
+ * what a line contains but leaves the actual write unexercised. That gap is why
+ * a defect in the shipped path went unnoticed for the whole project: the log
+ * was configured, enabled and documented, and wrote nothing. src/cli/shim.test.ts
+ * covers the other half (an unawaited write surviving process teardown); this
+ * covers the write itself.
+ */
+describe("createAuditLogger with no injected append", () => {
+  let dir: string;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), "open-ga4-audit-"));
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("creates the file and writes one JSON line to it", async () => {
+    const logPath = path.join(dir, "created.log");
+    const logger = createAuditLogger({ path: logPath, now: () => new Date("2026-08-14T09:00:00Z") });
+    await logger.record({ tool: "query", propertyId: "123456789", rows: 3 });
+
+    expect(JSON.parse(await readFile(logPath, "utf8"))).toEqual({
+      time: "2026-08-14T09:00:00.000Z",
+      tool: "query",
+      property: "123456789",
+      rows: 3,
+    });
+  });
+
+  it("appends to an existing file rather than replacing it", async () => {
+    const logPath = path.join(dir, "appended.log");
+    const logger = createAuditLogger({ path: logPath });
+    await logger.record({ tool: "report", propertyId: "1" });
+    await logger.record({ tool: "compare", propertyId: "2" });
+
+    const lines = (await readFile(logPath, "utf8")).trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines.map((line) => (JSON.parse(line) as { tool: string }).tool)).toEqual([
+      "report",
+      "compare",
+    ]);
+  });
+
+  it("reports a directory that does not exist instead of throwing", async () => {
+    // The real failure mode for a path a user typed: the skill warns and the
+    // answer still arrives. Reaches the real errno rather than a thrown stub.
+    const onError = vi.fn();
+    const logger = createAuditLogger({ path: path.join(dir, "no-such-dir", "audit.log"), onError });
+
+    await expect(logger.record({ tool: "report", propertyId: "1" })).resolves.toBeUndefined();
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining("no-such-dir"));
   });
 });
 
