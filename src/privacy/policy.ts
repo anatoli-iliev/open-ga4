@@ -35,9 +35,29 @@ const USER_IDENTIFYING_PREFIXES = ["customUser:"];
  * by marketers. Not blocked (they are the useful ones), but they are why
  * redaction is on by default and why results are marked as untrusted network
  * content: a stranger can put text in any of them by visiting a URL.
+ *
+ * **This list is not exhaustive, and nothing depends on it being.** Read that
+ * before adding a check that assumes otherwise. Redaction runs on every value of
+ * every dimension column, and the untrusted-content framing is attached to every
+ * row of every report, both regardless of class (see src/ga4/format.ts), so a
+ * dimension missing from here is protected exactly as much as one listed. What
+ * the class is for is documentation and the `fields` listing: it records which
+ * dimensions are *known* to carry text a stranger wrote, so nobody has to
+ * rediscover it.
+ *
+ * Enumerating the full set is not achievable. `eventName` is the plain example
+ * and is listed below: the GA4 `collect` endpoint accepts an arbitrary event
+ * name from anyone holding the measurement id, which is public by construction,
+ * sitting in the tag on the site. Every event parameter that becomes a
+ * dimension has the same property. A list that claimed completeness would be
+ * making a promise about Google's ingestion surface that this repository is in
+ * no position to keep.
  */
 const FREE_TEXT_PREFIXES = ["customEvent:", "customItem:", "sessionCustomChannelGroup:"];
 const FREE_TEXT_EXACT = new Set([
+  // Injectable through the collect endpoint with nothing but the public
+  // measurement id, no visit to the site required.
+  "eventName",
   "pagePath",
   "pagePathPlusQueryString",
   "pageLocation",

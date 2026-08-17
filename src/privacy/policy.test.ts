@@ -29,8 +29,30 @@ describe("classifyDimension", () => {
     "fileName",
     "customEvent:order_ref",
     "customItem:sku_note",
+    // Injectable with nothing but the measurement id, which is public: the
+    // collect endpoint takes an arbitrary event name from anyone. It was
+    // classified ordinary, which read as a claim that it is not visitor-written.
+    "eventName",
   ])("treats %s as free text", (name) => {
     expect(classifyDimension(name)).toBe("free-text");
+  });
+
+  /**
+   * The free-text list is documentation, not a gate, and the comment above it now
+   * says so. This pins the reason that is safe: redaction and the
+   * untrusted-content framing apply to every dimension column whatever its
+   * class, so a dimension missing from the list is protected exactly as much as
+   * one on it. If that ever stops being true, the list becomes a security
+   * boundary that cannot be completed, and this test is where to notice.
+   */
+  it("classifies an unknown dimension as ordinary rather than guessing", () => {
+    expect(classifyDimension("aDimensionGoogleAddsNextYear")).toBe("ordinary");
+  });
+
+  it("blocks nothing on the strength of being free text", () => {
+    expect(() =>
+      assertDimensionsAllowed(["eventName", "customEvent:whatever"], DEFAULT_ACCESS_POLICY),
+    ).not.toThrow();
   });
 
   it.each(["date", "country", "deviceCategory", "sessionSource", "sessionDefaultChannelGroup"])(

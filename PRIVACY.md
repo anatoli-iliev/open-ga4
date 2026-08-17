@@ -203,8 +203,14 @@ in `src/privacy/policy.test.ts` pins the choice: *"permits free-text dimensions,
 are redacted rather than blocked"*.
 
 Those same values are visitor-authored (anyone can put a string in your `pagePath` by
-visiting a URL), so report rows are rendered inside a fenced block introduced as
-untrusted data rather than interpolated into prose. That fenced, labelled block is
+visiting a URL, and anyone holding your measurement id, which sits in the tag on your
+own site, can send an arbitrary `eventName` straight to Google's collect endpoint), so
+report rows are rendered inside a fenced block introduced as untrusted data rather than
+interpolated into prose. Which dimensions this applies to is not a list anybody can
+finish, so nothing is built on one: redaction runs on every value of every dimension
+column and the untrusted framing is attached to every row, whatever the dimension is
+called. `policy.ts`'s free-text list records the ones that are known, for documentation
+and for the `fields` listing, and says in as many words that it is not exhaustive. That fenced, labelled block is
 the whole of it. An earlier version of this project was an OpenClaw plugin and also
 marked every result with `resultContentSource: "network"`, the host's marker for
 externally controlled content; that field is only reachable through the plugin
