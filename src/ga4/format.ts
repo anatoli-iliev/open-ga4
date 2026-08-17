@@ -287,9 +287,10 @@ export function formatReport(
     );
   }
   if (redactions > 0) {
+    const singular = redactions === 1;
     caveats.push(
-      `${redactions} value${redactions === 1 ? "" : "s"} in this report matched a personal-data ` +
-        `pattern and were masked before you saw them.`,
+      `${redactions} value${singular ? "" : "s"} in this report matched a personal-data ` +
+        `pattern and ${singular ? "was" : "were"} masked before you saw ${singular ? "it" : "them"}.`,
     );
   }
   if (allRows.length > rows.length) {

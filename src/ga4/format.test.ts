@@ -140,7 +140,12 @@ describe("redaction in rendered output", () => {
     expect(JSON.stringify(result.rows)).not.toContain("ada@example.com");
   });
 
-  it("tells the reader that masking happened", () => {
+  it("tells the reader that masking happened, singular when exactly one value was masked", () => {
+    // A real redacted URL path ("/o/[redacted:token]") produced exactly one
+    // masked value on a live run, and the notice read "1 value ... were
+    // masked ... them": singular count, plural verb and pronoun. This fixture
+    // reproduces that count (one row, one dimension value, one match) so the
+    // grammar is pinned against the exact shape that broke.
     const result = formatReport(
       report({
         rows: [
@@ -152,7 +157,28 @@ describe("redaction in rendered output", () => {
       }),
       { title: "t", redaction },
     );
-    expect(result.markdown).toMatch(/matched a personal-data pattern and were masked/);
+    expect(result.markdown).toMatch(/1 value in this report matched a personal-data pattern and was masked before you saw it\./);
+    expect(result.markdown).not.toMatch(/were masked/);
+    expect(result.markdown).not.toMatch(/saw them/);
+  });
+
+  it("tells the reader that masking happened, plural when more than one value was masked", () => {
+    const result = formatReport(
+      report({
+        rows: [
+          {
+            dimensionValues: [{ value: "/u/ada@example.com" }],
+            metricValues: [{ value: "5" }, { value: "0.5" }],
+          },
+          {
+            dimensionValues: [{ value: "/u/bob@example.com" }],
+            metricValues: [{ value: "3" }, { value: "0.2" }],
+          },
+        ],
+      }),
+      { title: "t", redaction },
+    );
+    expect(result.markdown).toMatch(/2 values in this report matched a personal-data pattern and were masked before you saw them\./);
   });
 
   /**
