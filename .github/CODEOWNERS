@@ -1,4 +1,4 @@
-# Code owners for openclaw-plugin-ga4
+# Code owners for open-ga4
 #
 # GitHub reads this file to request reviews automatically. It does not, on its
 # own, require anything: a CODEOWNERS entry only becomes a gate once branch
@@ -54,12 +54,15 @@
 # Tests that hold the security and privacy claims up.
 #
 # surface.test.ts asserts the guarantees against the built bundle rather than
-# the source. docs.test.ts pins the documentation to the code. Weakening either
-# is how a claim silently stops being true.
+# the source. docs.test.ts pins the documentation to the code, and
+# docs/skill.test.ts pins SKILL.md, the published contract, to the command line
+# and the manifest. Weakening any of them is how a claim silently stops being
+# true.
 # ---------------------------------------------------------------------------
 
 /src/privacy/surface.test.ts    @anatoli-iliev
 /src/docs.test.ts               @anatoli-iliev
+/src/docs/skill.test.ts         @anatoli-iliev
 
 # ---------------------------------------------------------------------------
 # Supply chain and release.
@@ -77,11 +80,11 @@
 # ---------------------------------------------------------------------------
 # Published contract and legal text.
 #
-# The plugin manifest is what OpenClaw reads to decide what this package
-# provides. LICENSE and SECURITY.md are commitments to other people.
+# SKILL.md is what the agent reads to decide what this skill provides and how
+# to drive it, and what ClawHub's review compares against the code. LICENSE
+# and SECURITY.md are commitments to other people.
 # ---------------------------------------------------------------------------
 
-/openclaw.plugin.json           @anatoli-iliev
 /LICENSE                        @anatoli-iliev
 /SECURITY.md                    @anatoli-iliev
 

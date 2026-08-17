@@ -626,6 +626,58 @@ describe("the committed build output claim", () => {
   });
 });
 
+describe(".github/CODEOWNERS", () => {
+  /**
+   * CODEOWNERS is a list of paths, and a path that no longer exists protects
+   * nothing while looking exactly like protection. Line 84 guarded
+   * `/openclaw.plugin.json` for a whole project after the plugin manifest was
+   * deleted, under a comment describing what that manifest did.
+   *
+   * Only anchored, non-wildcard patterns are checked: `*` matches everything
+   * by design, and a pattern without a leading `/` is a name-anywhere rule
+   * rather than a claim that a particular file exists.
+   */
+  const CODEOWNERS = readFileSync(path.join(repoRoot, ".github/CODEOWNERS"), "utf8");
+
+  function ownedPaths(): string[] {
+    const paths: string[] = [];
+    for (const line of CODEOWNERS.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed === "" || trimmed.startsWith("#")) continue;
+      const pattern = trimmed.split(/\s+/)[0]!;
+      if (pattern.startsWith("/") && !pattern.includes("*")) {
+        paths.push(pattern);
+      }
+    }
+    return paths;
+  }
+
+  it("protects only paths that exist", () => {
+    const missing = ownedPaths().filter((pattern) => !existsSync(path.join(repoRoot, pattern)));
+    expect(missing).toEqual([]);
+  });
+
+  it("names something, so the check above cannot pass vacuously", () => {
+    expect(ownedPaths().length).toBeGreaterThan(5);
+  });
+
+  it("does not still name the repository this project was renamed from", () => {
+    // The shipped documentation is swept for this already; CODEOWNERS was
+    // outside that sweep and kept the old name in its first line.
+    expect(CODEOWNERS).not.toContain("openclaw-plugin-ga4");
+  });
+
+  it("owns the tests that hold the published claims up", () => {
+    for (const file of [
+      "/src/privacy/surface.test.ts",
+      "/src/docs.test.ts",
+      "/src/docs/skill.test.ts",
+    ]) {
+      expect(ownedPaths(), `${file} should have a CODEOWNERS entry`).toContain(file);
+    }
+  });
+});
+
 describe("the test helpers", () => {
   it("walks the source tree with a readdirSync recursion, never a glob", () => {
     // Assembled rather than written out, so this scan does not trip over its
