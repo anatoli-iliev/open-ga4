@@ -154,7 +154,7 @@ description: >-
   pages, traffic sources, what changed last month, who is on the site now.
   Read-only; calls Google's Analytics API with your credential and returns the
   rows here. Ask "how many visitors last week" or "top pages".
-version: 0.2.0
+version: 0.2.1
 homepage: https://github.com/anatoli-iliev/open-ga4
 metadata:
   openclaw:

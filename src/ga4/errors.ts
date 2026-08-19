@@ -155,9 +155,10 @@ export function diagnose(error: unknown, context: DiagnoseContext = {}): Ga4Erro
         "CLOCK_SKEW",
         `This machine's clock is about ${seconds} seconds ${direction} Google's, which invalidates ` +
           `the signed token used to authenticate. Google reports ${error.serverDate.toISOString()}.`,
-        "Turn on network time sync: `sudo timedatectl set-ntp true` on Linux, or Date & Time > " +
-          "Set automatically on macOS and Windows, then try again. Your Analytics account and " +
-          "credentials are fine.",
+        "Turn on automatic network time, then try again. macOS and Windows: Date & Time > " +
+          "Set automatically. Linux: the same setting in your Date & Time panel, or " +
+          "`timedatectl set-ntp true` from a terminal, which needs administrator rights and is " +
+          "yours to run. Your Analytics account and credentials are fine.",
       );
     }
   }

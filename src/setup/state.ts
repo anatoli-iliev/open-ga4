@@ -115,9 +115,10 @@ function mapped(code: string, principal?: string, detail?: string, checkId?: Che
         next: {
           where: "this machine",
           action:
-            "Turn on network time sync (`sudo timedatectl set-ntp true` on Linux, or " +
-            "Date & Time > Set automatically on macOS and Windows), then run doctor again. " +
-            "Your Analytics account and credentials are fine.",
+            "Turn on automatic network time, then run doctor again. Date & Time > Set " +
+            "automatically on macOS and Windows; on Linux the same setting, or " +
+            "`timedatectl set-ntp true` from a terminal, which needs administrator rights " +
+            "and is yours to run. Your Analytics account and credentials are fine.",
         },
       };
     case "DATA_API_DISABLED":

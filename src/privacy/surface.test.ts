@@ -126,4 +126,46 @@ describe("the shipped bundle", () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * ClawHub's review of 0.2.0 flagged `sudo timedatectl set-ntp true`, which the
+   * clock-skew message used to hand over as a line to paste, as normalising the
+   * habit of running an agent-suggested administrator command unread.
+   *
+   * The command itself is still named, in the message and in both documents: it
+   * is the answer on Linux, and withholding it to satisfy a scanner would leave
+   * a user stuck on a real problem. What changed is that it is offered rather
+   * than prescribed, with what it needs (administrator rights) and whose job it
+   * is (theirs) said out loud, and `sudo` is not written out for them.
+   *
+   * Checked against `lib/` rather than `src/`, because the message a user sees
+   * comes from the built output, and checked across every file because the
+   * string lived in two modules and would be easy to reintroduce in a third.
+   * Nothing about the skill's behaviour depends on this: turning on automatic
+   * time is a one-off operating-system setting that the skill never performs.
+   */
+  it("prescribes no privileged shell command anywhere in the built output", async () => {
+    const offenders: string[] = [];
+    for (const { file, text } of await readLibSources()) {
+      for (const term of ["sudo ", "doas ", "runas "]) {
+        if (text.includes(term)) {
+          offenders.push(`${file} tells the user to run ${term.trim()}`);
+        }
+      }
+    }
+    expect(offenders, "offer a privileged command and say it needs rights; do not paste it")
+      .toEqual([]);
+  });
+
+  it("still names the fix for a skewed clock, and says what it costs", async () => {
+    // The point above is not to lose the answer. If this stops matching, the
+    // message has been sanitised into uselessness rather than made safer.
+    const sources = await readLibSources();
+    const skew = sources.filter(({ text }) => text.includes("set-ntp true"));
+    expect(skew.length, "the clock-skew fix should still be named").toBeGreaterThan(0);
+    for (const { file, text } of skew) {
+      expect(text, `${file} should say the command needs administrator rights`)
+        .toMatch(/administrator rights/i);
+    }
+  });
 });

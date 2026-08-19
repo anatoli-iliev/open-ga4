@@ -5,7 +5,7 @@ description: >-
   pages, traffic sources, what changed last month, who is on the site now.
   Read-only; calls Google's Analytics API with your credential and returns the
   rows here. Ask "how many visitors last week" or "top pages".
-version: 0.2.0
+version: 0.2.1
 homepage: https://github.com/anatoli-iliev/open-ga4
 metadata:
   openclaw:
@@ -218,9 +218,12 @@ address, which has not changed.
 **Say:** "Your analytics and your key are both fine. This machine's clock has drifted,
 and Google refuses to accept a signature with the wrong time inside it."
 
-**Paste, on Linux:** `sudo timedatectl set-ntp true`
-
-**On macOS and Windows:** System Settings, Date & Time, turn on **Set automatically**.
+**Say how to turn on automatic network time, and let them do it.** On macOS and
+Windows: System Settings, Date & Time, turn on **Set automatically**. On Linux: the same
+setting in the desktop's Date & Time panel, or `timedatectl set-ntp true` from a terminal,
+which needs administrator rights. Offer the command, say what it does and that it needs
+those rights, and leave running it to them. Do not run it for them and do not present it
+as something to paste unread.
 
 Then run `doctor --json` again. This one looks exactly like a bad key, and people
 regenerate perfectly good keys over it, so say plainly that the key is not the problem.

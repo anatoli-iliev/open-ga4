@@ -16,7 +16,7 @@ import type { Streams } from "./render.js";
  * checkout and fail after install. src/cli/main.test.ts asserts this equals
  * package.json's version, so the two cannot silently drift apart.
  */
-export const VERSION = "0.2.0";
+export const VERSION = "0.2.1";
 
 const USAGE = `open-ga4: read-only Google Analytics 4 answers.
 
