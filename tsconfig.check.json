@@ -1,7 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // This config typechecks vitest.config.ts as well, which sits at the
+    // repository root and so falls outside the inherited rootDir of "src"
+    // (TS6059). Widening it to the root is free here because nothing is
+    // emitted: rootDir only decides an output layout, and there is no output.
+    "rootDir": "."
   },
   "include": ["src/**/*.ts", "vitest.config.ts"],
   "exclude": []
