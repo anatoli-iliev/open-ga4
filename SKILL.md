@@ -2,10 +2,10 @@
 name: open-ga4
 description: >-
   Answers questions about your website traffic from Google Analytics 4: top
-  pages, where visitors came from, what changed since last month, who is on the
-  site right now. Read only, runs on your machine, no Python. Ask "how many
-  visitors did I get last week" or "top pages last month".
-version: 0.1.0
+  pages, traffic sources, what changed last month, who is on the site now.
+  Read-only; calls Google's Analytics API with your credential and returns the
+  rows here. Ask "how many visitors last week" or "top pages".
+version: 0.2.0
 homepage: https://github.com/anatoli-iliev/open-ga4
 metadata:
   openclaw:
@@ -61,6 +61,25 @@ metadata:
 Read-only Google Analytics 4 answers for the person you are talking to. They will not
 open a terminal, and they may not know what GA4 is. You run the commands and report
 what came back.
+
+## What leaves the machine
+
+Read-only is not the same as local-only, so say this plainly if the user asks what the
+skill can reach. Every command makes an outbound HTTPS request:
+
+- **Sends** their Google credential to `oauth2.googleapis.com` for an access token, then
+  queries `analyticsdata.googleapis.com` and `analyticsadmin.googleapis.com`. The token
+  carries one scope, `analytics.readonly`. No fourth host is reachable: `assertAllowedUrl`
+  checks every URL before `fetch`, and `redirect: "error"` stops a 302 from leaving the
+  allowlist.
+- **Returns** report rows into this conversation, which puts them in the model provider's
+  context. Dimension values are redacted on the way unless `GA4_REDACT` is turned off.
+- **Writes** nothing to disk, with one exception: if `GA4_AUDIT_LOG` names a path, each
+  request is appended there (what was asked, never what came back).
+- **Reads** local configuration and the credential file when `doctor` runs, so it can name
+  the one setup step still missing. It never prints the credential.
+- **Enumerates** every GA4 property the credential can read when `properties` runs, unless
+  `GA4_PROPERTY_ALLOWLIST` names the ones allowed.
 
 ## How to run it
 

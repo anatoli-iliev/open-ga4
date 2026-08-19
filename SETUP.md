@@ -5,10 +5,17 @@ and do not want to learn it. Every button name and every URL below is exact. Fol
 order and it takes about ten minutes.
 
 **You may not need this document.** The agent can drive the whole thing in conversation:
-say "set up my analytics" and it runs `doctor --json`, which reports one blocking step at a
-time, and hands you the link and the exact string to paste for each. This file is here for
-anyone who would rather read the steps themselves, and as the reference when a step does
-not behave.
+say "use open-ga4 to set up my analytics" and it runs `doctor --json`, which reports one
+blocking step at a time and hands you the link and the exact string to paste for each.
+
+Name the skill rather than saying only "set up my analytics". Two reasons. A generic phrase
+can pull in whichever skill happens to match, and you want this one. And `doctor` is a real
+check, not a menu: it reads your local configuration and the credential file to work out
+which step is missing, so it should run when you decide it runs. It prints which step is
+missing and never prints the credential itself.
+
+This file is here for anyone who would rather read the steps themselves, and as the
+reference when a step does not behave.
 
 You will do work in two different Google products. They look related. They are not:
 

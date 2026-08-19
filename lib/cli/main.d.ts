@@ -7,7 +7,7 @@ import type { Streams } from "./render.js";
  * checkout and fail after install. src/cli/main.test.ts asserts this equals
  * package.json's version, so the two cannot silently drift apart.
  */
-export declare const VERSION = "0.1.0";
+export declare const VERSION = "0.2.0";
 export declare function main(argv: string[], env: NodeJS.ProcessEnv, streams: Streams): Promise<number>;
 /** The "command" branch of ParsedArgs, narrowed once so every reader below can use it directly. */
 export type CommandArgs = Extract<ParsedArgs, {

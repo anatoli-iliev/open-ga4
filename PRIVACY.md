@@ -19,6 +19,15 @@ here and the code disagree, the code is right and this document is a bug.
 The tests in `src/privacy/surface.test.ts` run against `lib/` (the bundle that
 ships), not the source. Intentions do not survive a build; strings do.
 
+**Where the tests named here are.** In the repository, not in the installed skill.
+The bundle carries `src/` so the code behind each guarantee can be read next to the
+`lib/` built from it, but it stopped carrying the test suite in 0.2.0: an installed
+copy has no test runner, so those files could only ever be read there, and a security
+scanner reading a deliberately fake credential fixture reports it as a finding against
+the artifact you installed. Every test file this document names is at
+<https://github.com/anatoli-iliev/open-ga4/tree/main/src>, where `npm install && npm test`
+runs it. Reading a test is worth less than running one.
+
 ## 2. What leaves your machine
 
 Three hosts, listed as the `ALLOWED_HOSTS` constant in `src/ga4/http.ts`. Every
