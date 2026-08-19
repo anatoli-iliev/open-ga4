@@ -8,6 +8,46 @@ All notable changes to this project are documented here. The format follows
 
 Nothing yet.
 
+## [0.2.1] - 2026-08-19
+
+Two wording corrections, both from ClawHub's review of 0.2.0, neither changing
+what any command does. Both are cases where the text was stronger than the
+truth, or told somebody to do something more dangerous than it needed to.
+
+### Fixed
+
+- **"It writes nothing to disk" was not true, and one place said so in the same
+  breath as itself.** The claim appeared in README.md, PRIVACY.md and SKILL.md,
+  and it is false the moment `GA4_AUDIT_LOG` is set, because the audit module is
+  a write path. PRIVACY.md's table contradicted itself inside a single row: the
+  guarantee column said nothing is written while the column beside it said "no
+  writer exists outside the opt-in audit log". README.md was the worst of the
+  three, because the bare sentence sat in the list of reasons to trust the skill
+  with no exception named anywhere near it. The claim is now narrowed to what
+  holds under every setting, that **no report data** is written to disk (no row,
+  no value, no total), with the audit log named alongside it and what it does and
+  does not record. A test keeps the exception in the same table row, list item or
+  paragraph as the claim, so it cannot drift into another section where a reader
+  will not meet the two together.
+- **The clock-skew fix no longer hands over a privileged command to paste.** It
+  used to read "Paste, on Linux: `sudo timedatectl set-ntp true`", in SKILL.md,
+  in SETUP.md, in the CLI's error message and in `doctor`'s output. The command is
+  still named, because it is the answer on Linux and withholding it would leave
+  somebody stuck on a real problem that looks exactly like a bad key. What changed
+  is that it is offered rather than prescribed: the operating system's Date & Time
+  setting comes first, the command is presented with what it needs
+  (administrator rights) and whose job it is (the user's, not the agent's), and
+  `sudo` is not written out to be pasted unread. Two tests hold this against the
+  built output, one that no privileged command is prescribed anywhere in `lib/`,
+  and one that the fix is still named and still says what it costs, so the
+  message cannot be sanitised into uselessness instead.
+
+Deliberately not changed: the remaining review findings ask for the ambient
+gcloud credential fallback to be removed, for setup diagnostics to stop being
+agent-driven, for property enumeration to be dropped, and for network egress to
+be declared in a manifest field that OpenClaw's frontmatter does not have. The
+first three are the features, not accidents, and the fourth cannot be expressed.
+
 `.github/workflows/release.yml` runs whenever a GitHub release is published: it
 verifies the build, then publishes to ClawHub with the source commit recorded. It
 has still never run. Both releases so far were published from a maintainer's
@@ -180,6 +220,7 @@ take, so the packaging changed and the analytics core did not.
 - Licensed MIT-0, matching what ClawHub serves, so the licence a user receives
   is the licence in the repository.
 
-[Unreleased]: https://github.com/anatoli-iliev/open-ga4/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/anatoli-iliev/open-ga4/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/anatoli-iliev/open-ga4/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/anatoli-iliev/open-ga4/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/anatoli-iliev/open-ga4/releases/tag/v0.1.0
