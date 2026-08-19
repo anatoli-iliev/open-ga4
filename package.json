@@ -1,6 +1,6 @@
 {
   "name": "open-ga4",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open GA4: read-only, privacy-respecting Google Analytics 4 answers for an OpenClaw agent.",
   "keywords": [
     "openclaw",
@@ -46,6 +46,6 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.7"
   }
 }

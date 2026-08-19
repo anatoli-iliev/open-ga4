@@ -50,6 +50,13 @@ Bug bounty: there is no bounty programme. This is an unfunded open-source projec
 Six threats, in the order they are worth worrying about. Each says what the skill
 does and what it does not do.
 
+Each one names the test that holds it. Those tests are in the repository, not in the
+installed skill: the bundle ships `src/` so the enforcing code can be read beside the
+`lib/` built from it, but from 0.2.0 it leaves the suite out, because an installed copy
+has no runner and a scanner reads the redaction tests' fake credentials as findings
+against the artifact. Run them from
+<https://github.com/anatoli-iliev/open-ga4/tree/main/src>.
+
 ### 1. Credential theft from the key file on disk
 
 **The risk.** The Google service-account JSON key is a password in a file. Anyone who
@@ -85,6 +92,35 @@ contents into `GA4_CREDENTIALS` rather than a path, know where that lands: OpenC
 stores it in `~/.openclaw/openclaw.json` and writes a `.bak` beside it on every
 change, so the key is then in two files rather than one. Delete the key in Google
 Cloud when you stop using it; revocation is instant and free.
+
+**Rotating or revoking the key.** Both happen in Google Cloud, not here, and neither
+needs this skill's cooperation. Revoking is the emergency move and it takes effect at
+once:
+
+1. Open <https://console.cloud.google.com/iam-admin/serviceaccounts>, click the
+   `ga4-reader` account, open its **Keys** tab.
+2. Delete the key you want dead. Nothing can be signed with it from that moment; an
+   access token already minted from it keeps working until it expires, which is at most
+   an hour.
+3. To cut off access altogether rather than one key, remove the service account's email
+   address from Google Analytics instead: **Admin**, then **Property access management**.
+   That revokes every key the account has, including any you have forgotten about.
+
+Rotate on the same screen, in this order: **Add key**, **Create new key**, **JSON**;
+point `GA4_CREDENTIALS` at the new file; confirm with `doctor --json`; then delete the
+old key. That order leaves no window where the skill has no working credential.
+
+Rotate whenever the file might have been seen: a shared or lost machine, a backup you
+cannot account for, a key pasted into a chat or an issue, or somebody leaving the
+project. A service-account key does not expire, so nothing rotates it for you and an
+old one stays valid indefinitely.
+
+**The option with no key file.** If you have the `gcloud` CLI, `gcloud auth
+application-default login` avoids a downloadable key entirely. The skill reads that
+credential as a fallback, and Google invalidates it when you change your password or
+revoke the grant, which is the thing a JSON key on disk cannot offer. It also expires
+and needs re-running, which is the trade, and it is why the key file is still the
+documented default for someone who wants this to keep working unattended.
 
 **What it does not do.** File permissions are the operating system's job. Anything
 running as your user can read your key, with or without this skill.

@@ -3,28 +3,40 @@
 # The rule this file follows: everything needed to run the skill, and to read
 # it, ships; everything that only exists to develop it does not.
 #
-# **The test suite ships to be read, not to be run.** src/ is deliberately
-# absent from this file, tests included, because the auditability claim is the
-# product: README.md, PRIVACY.md and SECURITY.md all invite a reader to check
-# the guarantees in the code, src/privacy/surface.test.ts is the artifact that
-# proves the privacy claims rather than asserting them, and ClawHub's security
-# review reads the shipped code. Shipping the source next to the lib/ built
-# from it is what makes those two comparable.
+# **src/ ships. The test suite does not.** The non-test source ships because the
+# auditability claim is the product: README.md, PRIVACY.md and SECURITY.md all
+# invite a reader to check the guarantees in the code, and shipping src/ next to
+# the lib/ built from it is what makes those two comparable.
 #
-# But an installed copy cannot run `npm test`, and that is a deliberate
-# trade rather than an oversight: vitest.config.ts, scripts/ and .github/ are
-# excluded below, and two of the shipped tests read paths that are excluded
-# anyway (src/docs.test.ts reads .github/CODEOWNERS, src/cli/shim.test.ts
-# reads scripts/build-lib.mjs). Anyone who wants to run the suite clones the
-# repository and runs `npm install`, which is CONTRIBUTING.md's first step.
-# Shipping the several files that would make an installed copy runnable buys a
-# workflow nobody uses, on top of a devDependency the bundle does not carry.
+# The tests used to ship alongside it, to be read rather than run. That was
+# reversed on 2026-08-19, for two reasons that only became visible once the
+# bundle was scanned.
+#
+# The first is that they were never runnable here anyway. An installed copy has
+# no vitest.config.ts, no scripts/ and no .github/, all excluded below, and two
+# of the tests read paths from those directories (src/docs.test.ts reads
+# .github/CODEOWNERS, src/cli/shim.test.ts reads scripts/build-lib.mjs). So the
+# bundle carried 25 files that could only ever be read, never executed.
+#
+# The second is what a scanner reads them as. ClawHub's static analysis reported
+# four CRITICAL findings against the 0.1.0 bundle and every one was a test file:
+# child_process calls in src/cli/shim.test.ts and src/release-workflow.test.ts,
+# and the deliberately fake credential fixtures in src/auth/credentials.test.ts
+# and src/privacy/redact.test.ts. Those fixtures are load-bearing (a test that
+# proves a bearer token gets redacted has to contain a bearer token to redact)
+# and the child_process calls test this repository's own machinery, not the
+# skill. All four are false positives, and all four were being reported against
+# the artifact a user installs.
+#
+# What replaces them: the tests live in the public repository, where they can be
+# run rather than only read. Every doc that cites one as evidence now says so and
+# links there. That is a better offer than an unrunnable copy in the bundle.
 #
 # lib/ ships because it is what actually runs.
 #
 # Verify a change here with:
 #   clawhub skill publish "$PWD" --slug open-ga4 --name "Open GA4" \
-#     --version 0.1.0 --dry-run --json
+#     --version 0.2.0 --dry-run --json
 # and read fileCount. --dry-run publishes nothing.
 
 # Dependencies and version control. Named explicitly rather than assumed:
@@ -74,6 +86,12 @@ tsconfig.json
 tsconfig.check.json
 vitest.config.ts
 scripts/
+
+# The test suite itself, and the helpers that exist only to support it. See the
+# header for why these stopped shipping. src/testing/ holds no runtime code:
+# every file in it is imported by a test and by nothing else.
+*.test.ts
+src/testing/
 
 # Repository automation and local working state. CI, Dependabot and the
 # release workflow describe how this repository is maintained, not what the

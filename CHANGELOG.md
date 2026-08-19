@@ -6,15 +6,86 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing has been released yet. The 0.1.0 entry below describes what the first
-release will be; it is kept up to date rather than frozen, because there is no
-published artifact for it to be a record of.
+Nothing yet.
 
-A GitHub Actions workflow (`.github/workflows/release.yml`) now runs whenever a
-GitHub release is published: it verifies the build, then publishes to ClawHub with
-the source commit recorded. It has not run yet, since nothing has been released
-under this name; whoever cuts the first release is the one who finds out whether it
-works.
+`.github/workflows/release.yml` runs whenever a GitHub release is published: it
+verifies the build, then publishes to ClawHub with the source commit recorded. It
+has still never run. Both releases so far were published from a maintainer's
+machine with `clawhub skill publish`, so `CLAWHUB_TOKEN` remains unconfigured and
+whoever cuts the first GitHub release is the one who finds out whether it works.
+
+## [0.2.0] - 2026-08-19
+
+Answers the six findings and four static-analysis reports from ClawHub's security
+review of 0.1.0, which had recommended against installing it. No command changed,
+and nothing about what the skill sends, returns or refuses is different. What
+changed is a dependency floor, what the bundle contains, and how honestly the
+skill describes itself before you agree to run it.
+
+### Security
+
+- **The declared floor for `vitest` was below the fix for CVE-2026-47429**, an
+  arbitrary file read and execute that applies when the Vitest UI server is
+  listening. It is a development dependency and never in the installed runtime
+  path, and the committed lockfile already resolved 3.2.7, which is patched. But
+  `^3.2.0` spanned the vulnerable range, and neither a scanner nor a careful
+  person reading the manifest can tell a patched resolution from a permitted
+  vulnerable one. The floor is now `^3.2.7`, above the whole advisory, and
+  `npm audit` reports nothing.
+- **The test suite no longer ships in the published bundle**, which drops it from
+  105 files to 80. The tests were never runnable from an installed copy, since it
+  has no test runner, no `vitest.config.ts` and none of the paths two of them
+  read, so they shipped to be read rather than run. Read by a scanner instead,
+  they produced four CRITICAL findings against the artifact a user installs, and
+  all four were false positives in test code: `child_process` calls that exercise
+  this repository's own build script and release workflow, and the deliberately
+  fake credentials that the redaction tests cannot do without, a test proving a
+  bearer token gets redacted having to contain a bearer token. `src/` still ships,
+  so the code behind every guarantee can still be read beside the `lib/` built
+  from it. The tests are in the public repository, where they run rather than only
+  being read, and PRIVACY.md, SECURITY.md and README.md now say so and link there.
+- **Rotating and revoking the service-account key are now documented**, with the
+  steps and the order. The review's remaining findings were both about the same
+  thing: a service-account JSON key is a persistent credential, and while the
+  documentation already steered towards storing it as a `chmod 600` path rather
+  than pasting its contents into config, it said only that revocation is "instant
+  and free" without saying how. SECURITY.md now gives the console steps, says that
+  removing the account's email from Google Analytics revokes every key at once
+  including forgotten ones, notes that a key never expires so nothing rotates it
+  for you, and puts new-key-before-old-key-deleted in an order that leaves no
+  window without a working credential. It also names the option with no key file
+  at all, `gcloud auth application-default login`, and says what the trade is.
+
+### Changed
+
+- **The frontmatter description no longer implies the skill stays on your
+  machine.** It said "Read only, runs on your machine, no Python", which reads as
+  nothing leaving the machine, while every command in fact signs a credential,
+  calls Google over HTTPS and returns rows into the conversation. It now says
+  "Read-only; calls Google's Analytics API with your credential and returns the
+  rows here". Read-only was accurate and is kept; local-only was never claimed on
+  purpose and is now not implied.
+- **SKILL.md opens with a "What leaves the machine" section**, so the agent can
+  answer the question before running anything: the three hosts, the one
+  `analytics.readonly` scope, `assertAllowedUrl` and `redirect: "error"` as what
+  stops a fourth, report rows entering the model provider's context, the audit log
+  as the single disk write and only when `GA4_AUDIT_LOG` names a path, `doctor`
+  reading local configuration without printing the credential, and `properties`
+  enumerating what the credential can reach unless `GA4_PROPERTY_ALLOWLIST` narrows
+  it.
+- **SETUP.md asks you to name the skill when starting setup by voice**, "use
+  open-ga4 to set up my analytics" rather than a bare "set up my analytics", and
+  says why: a generic phrase can pull in whichever skill matches, and `doctor` is a
+  real check that reads your configuration and credential file rather than a menu,
+  so it should run when you decide it runs.
+
+Not changed, deliberately: no permissions block was invented for the frontmatter.
+The review asked for outbound network access to be declared in metadata, and the
+OpenClaw frontmatter schema has no field for it. Every environment variable the
+skill reads is already declared in `envVars`, the egress allowlist is stated in
+SKILL.md, README.md and PRIVACY.md and pinned against the built output by
+`src/privacy/surface.test.ts`, and a key that nothing enforces would look like a
+sandbox guarantee while being a comment.
 
 ## [0.1.0] - 2026-08-14
 
@@ -109,5 +180,6 @@ take, so the packaging changed and the analytics core did not.
 - Licensed MIT-0, matching what ClawHub serves, so the licence a user receives
   is the licence in the repository.
 
-[Unreleased]: https://github.com/anatoli-iliev/open-ga4/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/anatoli-iliev/open-ga4/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/anatoli-iliev/open-ga4/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/anatoli-iliev/open-ga4/releases/tag/v0.1.0

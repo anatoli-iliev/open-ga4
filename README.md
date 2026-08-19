@@ -247,6 +247,11 @@ npm test              # vitest, no network, no credentials
 `npm test` builds first, because `src/privacy/surface.test.ts` asserts the privacy
 guarantees against `lib/`, the code that actually ships, rather than against the source.
 
+The test suite lives here and only here. The published skill ships `src/` so its code can
+be read, but not the tests: an installed copy has no runner to execute them with, and a
+scanner reading the fake credential fixtures in the redaction tests reports them as
+findings against the bundle. Clone this repository to run them.
+
 `src/docs.test.ts` and `src/docs/skill.test.ts` check the prose in this file and in
 `SKILL.md`: every command quoted must parse, every setup state the code can report must
 appear in `SKILL.md`'s tree, every environment variable the frontmatter declares must be one

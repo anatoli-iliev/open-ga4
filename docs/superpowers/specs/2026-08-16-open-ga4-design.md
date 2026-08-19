@@ -151,10 +151,10 @@ managed directory instead.
 name: open-ga4
 description: >-
   Answers questions about your website traffic from Google Analytics 4: top
-  pages, where visitors came from, what changed since last month, who is on the
-  site right now. Read only, runs on your machine, no Python. Ask "how many
-  visitors did I get last week" or "top pages last month".
-version: 0.1.0
+  pages, traffic sources, what changed last month, who is on the site now.
+  Read-only; calls Google's Analytics API with your credential and returns the
+  rows here. Ask "how many visitors last week" or "top pages".
+version: 0.2.0
 homepage: https://github.com/anatoli-iliev/open-ga4
 metadata:
   openclaw:

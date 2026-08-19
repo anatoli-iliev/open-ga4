@@ -45,11 +45,18 @@ describe("lib/, the committed build output", () => {
  * the directory being published and whether the publisher happens to skip it
  * is not something this repository controls.
  *
- * Included, on purpose: src/ and its tests. The auditability claim is the
- * product, ClawHub's security review reads the shipped code, and
- * src/privacy/surface.test.ts is the artifact that proves the privacy claims
- * rather than asserting them. An "exclude every test" tidy-up would delete
- * exactly the file the README points a sceptical reader at.
+ * Included, on purpose: src/, minus its tests. The auditability claim is the
+ * product and ClawHub's security review reads the shipped code, so the source
+ * that compiles to lib/ ships next to it.
+ *
+ * Excluded as of 0.2.0, having previously shipped: *.test.ts and src/testing/.
+ * The tests were never runnable from an installed copy, because the runner's
+ * configuration and two paths those tests read are excluded, so they shipped to
+ * be read. ClawHub's static analysis then read them and reported four CRITICAL
+ * findings against the bundle, all four false positives in test files: two
+ * child_process calls that exercise this repository's own machinery, and two
+ * deliberately fake credential fixtures that the redaction tests cannot do
+ * without. The tests are in the public repository, where they run.
  */
 describe(".clawhubignore, which decides what is published", () => {
   const ignorePath = path.join(repoRoot, ".clawhubignore");
@@ -65,19 +72,19 @@ describe(".clawhubignore, which decides what is published", () => {
     expect(existsSync(ignorePath)).toBe(true);
   });
 
-  it("does not promise a runnable suite while excluding what running one needs", () => {
-    // The header used to say everything needed to "run or audit" the skill
-    // ships, which was false in one direction: the tests ship, and an
-    // installed copy cannot run them, because the runner's configuration and
-    // two paths those tests read are excluded. Either half is a defensible
-    // choice; claiming both at once is not. If somebody later ships what makes
-    // the suite runnable, they can drop the sentence and this stops applying.
+  it("says where the tests went, now that they do not ship", () => {
+    // Two earlier versions of this file each claimed something the patterns
+    // contradicted: first that everything needed to "run or audit" the skill
+    // shipped, while the runner's configuration was excluded, then that the
+    // suite shipped "to be read, not to be run", which stopped being true when
+    // the suite stopped shipping. A reader who goes looking for a test named in
+    // PRIVACY.md needs the header to tell them where it actually is.
     const text = readFileSync(ignorePath, "utf8");
-    const needed = ["vitest.config.ts", "scripts/", ".github/"];
-    const excluded = needed.filter((pattern) => patterns().includes(pattern));
-    if (excluded.length > 0) {
-      expect(text, `${excluded.join(", ")} are excluded, so the header must not promise a runnable suite`)
-        .toMatch(/cannot run|not runnable|to be read, not to be run/i);
+    if (patterns().includes("*.test.ts")) {
+      expect(text, "the tests are excluded, so the header must say where they are instead")
+        .toMatch(/public repositor|in the repositor/i);
+      expect(text, "the header must not still claim the suite ships")
+        .not.toMatch(/to be read, not to be run/i);
     }
   });
 
@@ -93,6 +100,8 @@ describe(".clawhubignore, which decides what is published", () => {
       ".github/",
       ".superpowers/",
       "docs/superpowers/",
+      "*.test.ts",
+      "src/testing/",
     ]) {
       expect(patterns(), `${pattern} should not be published`).toContain(pattern);
     }
@@ -112,17 +121,63 @@ describe(".clawhubignore, which decides what is published", () => {
         }
       }
     }
-    // No pattern may reach into src/, and no pattern may exclude test files:
-    // a future "do not ship tests" tidy-up has to argue with this test first,
-    // because the file it would delete is the one the README points a
-    // sceptical reader at. vitest.config.ts is the one allowed match on
-    // "test", and it is configuration, not a test.
-    for (const pattern of patterns()) {
-      expect(pattern, "no pattern may exclude anything under src/").not.toMatch(/(^|\/)src(\/|$)/);
-      if (pattern !== "vitest.config.ts") {
-        expect(pattern, "test files ship on purpose").not.toMatch(/test/i);
+  });
+
+  /**
+   * Whether a path is published, answered by walking the repository against the
+   * patterns rather than by pattern-matching the patterns themselves. The
+   * previous version of these checks asserted that no pattern contained the
+   * word "test", which encoded the decision that the suite shipped; once that
+   * decision was reversed the assertion had nothing left to say about whether
+   * the right files stopped shipping, which is the part worth defending.
+   *
+   * Purpose-built for the pattern shapes this file uses, and used only for paths
+   * under src/: a trailing-slash directory prefix, a leading-`*` glob matched
+   * against the basename the way gitignore matches a pattern containing no
+   * slash, and an exact path. Not a general gitignore implementation, which is
+   * why the control test below pins it against known answers: a matcher that
+   * quietly stopped matching would make everything past it pass forever.
+   */
+  function isExcluded(relPath: string): boolean {
+    return patterns().some((pattern) => {
+      if (pattern.endsWith("/")) {
+        return relPath === pattern.slice(0, -1) || relPath.startsWith(pattern);
       }
-    }
+      if (pattern.startsWith("*")) {
+        return path.basename(relPath).endsWith(pattern.slice(1));
+      }
+      return relPath === pattern;
+    });
+  }
+
+  it("has a matcher that recognises the shapes actually in the file", () => {
+    expect(isExcluded("src/privacy/redact.test.ts"), "*.test.ts, at depth").toBe(true);
+    expect(isExcluded("src/testing/files.test-support.ts"), "src/testing/").toBe(true);
+    expect(isExcluded("src/privacy/redact.ts"), "ordinary source").toBe(false);
+    expect(isExcluded("lib/cli.js"), "the built output").toBe(false);
+    expect(isExcluded("PRIVACY.md"), "a shipped doc").toBe(false);
+    expect(isExcluded("tsconfig.json"), "an exact path").toBe(true);
+  });
+
+  it("publishes every source file that is not a test", () => {
+    const shipped = listFiles(path.join(repoRoot, "src"), ".ts")
+      .map((file) => path.relative(repoRoot, file).split(path.sep).join("/"))
+      .filter((rel) => !rel.endsWith(".test.ts") && !rel.startsWith("src/testing/"));
+    // Guard against the glob above matching nothing and vacuously passing.
+    expect(shipped.length, "src/ should hold source files that are not tests").toBeGreaterThan(15);
+    const dropped = shipped.filter((rel) => isExcluded(rel));
+    expect(dropped, "the source that compiles to lib/ has to ship for the code to be auditable")
+      .toEqual([]);
+  });
+
+  it("publishes no test file", () => {
+    const tests = listFiles(path.join(repoRoot, "src"), ".ts")
+      .map((file) => path.relative(repoRoot, file).split(path.sep).join("/"))
+      .filter((rel) => rel.endsWith(".test.ts") || rel.startsWith("src/testing/"));
+    expect(tests.length, "src/ should still hold a test suite").toBeGreaterThan(20);
+    const leaked = tests.filter((rel) => !isExcluded(rel));
+    expect(leaked, "these would be published, and a scanner reads a test fixture as a finding")
+      .toEqual([]);
   });
 
   /**
