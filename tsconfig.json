@@ -7,8 +7,21 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
     "declaration": true,
+    // Required from TypeScript 6 onwards: with an outDir set and no rootDir,
+    // tsc used to infer the common source directory and now refuses to
+    // (TS5011), because the inferred value silently changes the output layout
+    // when a file is added outside it. "src" is what it used to infer, so the
+    // emitted tree is unchanged: lib/ is byte-identical before and after.
+    "rootDir": "src",
     "outDir": "lib",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // TypeScript 7 no longer pulls in every package under node_modules/@types
+    // on its own, so leaving this out loses `process`, `Buffer` and the NodeJS
+    // namespace (TS2591, TS2503). Naming the one package this project actually
+    // depends on is also narrower than the old behaviour, which swept up
+    // whatever vitest happened to install beside it (@types/chai,
+    // @types/deep-eql, @types/estree).
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test-support.ts"]
