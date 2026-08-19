@@ -14,7 +14,7 @@ here and the code disagree, the code is right and this document is a bug.
 | Dimension values in reports are redacted before the model sees them | `src/privacy/redact.ts`, applied in `src/ga4/format.ts` | `src/privacy/redact.test.ts` |
 | Person-identifying dimensions are refused by default | `src/privacy/policy.ts`: `assertDimensionsAllowed` | `src/privacy/policy.test.ts` |
 | Credentials never reach output, logs or errors | `src/privacy/redact.ts`: `redactText`, called in `src/ga4/http.ts` | `src/ga4/http.test.ts`, `src/privacy/redact.test.ts` |
-| Nothing is written to disk | no writer exists outside the opt-in audit log | `src/privacy/surface.test.ts` |
+| No report data is written to disk | the only writer is the opt-in audit log, which records what was asked and never what came back | `src/privacy/surface.test.ts` |
 
 The tests in `src/privacy/surface.test.ts` run against `lib/` (the bundle that
 ships), not the source. Intentions do not survive a build; strings do.

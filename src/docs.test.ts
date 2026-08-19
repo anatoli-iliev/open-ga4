@@ -206,6 +206,90 @@ describe("the privacy documentation", () => {
     const privacy = await readFile(path.join(repoRoot, "PRIVACY.md"), "utf8");
     expect(privacy).toMatch(/model provider|LLM provider/i);
   });
+
+  /**
+   * README.md, PRIVACY.md and SKILL.md each used to say, flatly, that the skill
+   * writes nothing to disk. That is false the moment somebody sets
+   * `GA4_AUDIT_LOG`: `src/privacy/audit.ts` is a write path. It read as a
+   * guarantee while only being a default, and in README.md it sat in the list of
+   * reasons to trust the thing with no exception named anywhere near it.
+   *
+   * ClawHub's review of 0.2.0 found the contradiction from the other end, against
+   * the comment in `src/privacy/audit.ts` that quoted the claim while sitting in
+   * the module that breaks it.
+   *
+   * The claim was narrowed rather than deleted, to the part that holds under
+   * every setting: no report data reaches a file. This keeps it narrow. The
+   * exception has to travel with the claim, in the same table row, the same
+   * bullet or the same paragraph, rather than living three sections away where a
+   * reader will not meet the two together.
+   */
+  describe("the disk-write claim", () => {
+    const ABSOLUTE =
+      /(?:writes?|written)\s+(?:nothing|no\s+data)\s+to\s+disk|nothing\s+(?:is\s+)?(?:written|writes)\s+to\s+disk/i;
+
+    function blocks(text: string): string[] {
+      const out: string[] = [];
+      for (const paragraph of text.split(/\n\s*\n/)) {
+        if (!/^\s*[|\-*]/m.test(paragraph)) {
+          out.push(paragraph);
+          continue;
+        }
+        // A table row and a list item each stand on their own, so a qualifier in
+        // the next row does not count. A wrapped continuation line still belongs
+        // to the item above it: CHANGELOG.md breaks "outside the audit log"
+        // across two lines, and splitting there would report a properly
+        // qualified sentence purely because of where the line happened to wrap.
+        let current = "";
+        for (const line of paragraph.split("\n")) {
+          if (/^\s*(?:\||[-*]\s)/.test(line)) {
+            if (current !== "") {
+              out.push(current);
+            }
+            current = line;
+          } else {
+            current = current === "" ? line : `${current} ${line.trim()}`;
+          }
+        }
+        if (current !== "") {
+          out.push(current);
+        }
+      }
+      return out;
+    }
+
+    it("keeps a wrapped list item in one block, so a line break cannot hide a qualifier", () => {
+      const wrapped = "- and that nothing writes to disk outside the audit\n  log, which is fine\n";
+      expect(blocks(wrapped)).toHaveLength(1);
+      expect(blocks(wrapped)[0]).toMatch(/audit log/);
+      // Separate items must still be separate, or the check above would pass by
+      // swallowing the whole document into one block.
+      expect(blocks("- writes nothing to disk\n- mentions the audit log\n")).toHaveLength(2);
+    });
+
+    it("matches the wording it exists to catch, and spares the wording that replaced it", () => {
+      // A pattern that quietly stopped matching would make the check below pass
+      // on any wording at all, which is the failure mode of every test that
+      // looks for the absence of something.
+      expect(ABSOLUTE.test("It writes nothing to disk.")).toBe(true);
+      expect(ABSOLUTE.test("Nothing is written to disk")).toBe(true);
+      expect(ABSOLUTE.test("nothing writes to disk outside the audit log")).toBe(true);
+      expect(ABSOLUTE.test("It writes no report data to disk.")).toBe(false);
+      expect(ABSOLUTE.test("No report data is written to disk")).toBe(false);
+    });
+
+    it("never claims nothing is written to disk without naming the audit log alongside", () => {
+      const offenders: string[] = [];
+      for (const { file, text } of readShippedDocs()) {
+        for (const block of blocks(text)) {
+          if (ABSOLUTE.test(block) && !/audit log/i.test(block)) {
+            offenders.push(`${file}: ${block.trim().slice(0, 140)}`);
+          }
+        }
+      }
+      expect(offenders, "an absolute claim needs its exception in the same breath").toEqual([]);
+    });
+  });
 });
 
 describe("project identity", () => {

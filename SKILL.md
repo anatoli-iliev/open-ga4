@@ -575,8 +575,9 @@ variable name and let them set it themselves.
 
 By default: dimension values are redacted before you see them (emails, phone numbers,
 UUIDs, JWTs, Luhn-valid card numbers, long opaque tokens, and query-parameter values
-outside a keep list), `userId` and user-scoped custom dimensions are refused, and
-nothing is written to disk.
+outside a keep list), `userId` and user-scoped custom dimensions are refused, and no
+report data is written to disk. The audit log is the one write path and it is off unless
+`GA4_AUDIT_LOG` names a path; even then it records only what was asked.
 
 If somebody has turned redaction off, every report says so in its caveats and
 `doctor --json` reports it in `warnings`. Pass that on rather than dropping it: the rows

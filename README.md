@@ -130,8 +130,10 @@ order directly.
 - **It masks personal data before your agent sees it.** Email addresses, phone numbers,
   card numbers, tokens and unexpected query-string values in your reports are replaced, and
   the report tells you how many values were masked.
-- **It writes nothing to disk.** No cache of your reports, no saved access token, no
-  telemetry, no update check.
+- **It writes no report data to disk.** No cache of your reports, no saved access
+  token, no telemetry, no update check. One thing can be written, and only if you ask
+  for it: an audit log of what was *asked*, off unless you set `GA4_AUDIT_LOG` to a
+  path, and it never records what came back.
 
 ## Built to be checked
 

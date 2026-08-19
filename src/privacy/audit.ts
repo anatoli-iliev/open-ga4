@@ -14,8 +14,14 @@ import { appendFile } from "node:fs/promises";
  * is not, because that is the person.
  *
  * This is the only module in the skill that writes to a file, which is what
- * makes the "nothing is written to disk" claim checkable: `surface.test.ts`
- * asserts no other shipped module calls a write API.
+ * makes the "no report data is written to disk" claim checkable:
+ * `surface.test.ts` asserts no other shipped module calls a write API.
+ *
+ * The claim is worded that way rather than as "nothing is written to disk"
+ * deliberately. The shorter form was what the documentation used to say, and it
+ * is false the moment somebody sets `GA4_AUDIT_LOG`, which makes a promise out
+ * of a default. What survives every setting is the narrower claim: no row, no
+ * value and no total from a report reaches a file.
  */
 
 export type AuditEntry = {
